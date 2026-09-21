@@ -1,0 +1,3 @@
+# Le fichier d'environnement ne doit JAMAIS être versionné : il contient les clés.
+.env
+node_modules/

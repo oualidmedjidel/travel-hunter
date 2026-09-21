@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Travel Deal Hunter — compare vol + hôtel + transfert et trouve le meilleur rapport qualité/prix pour toute la famille.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#3b4fd8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c1018" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Travel Deal">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%233b4fd8' width='192' height='192' rx='40'/><text x='96' y='104' font-size='110' text-anchor='middle' dominant-baseline='central'>✈️</text></svg>">
+<title>Travel Deal Hunter</title>
+<style>
+/* ============ TOKENS ============ */
+:root {
+  --bg:          #f5f7fc;
+  --bg-tint:     #eef1fa;
+  --surface:     #ffffff;
+  --surface-2:   #f2f4fa;
+  --border:      #e1e6f2;
+  --border-strong:#cdd5e8;
+  --text:        #131a2b;
+  --muted:       #5b6579;
+  --faint:       #687083;
+  --primary:     #3b4fd8;
+  --primary-ink: #2b3bb0;
+  --primary-soft:#e7eaff;
+  --accent:      #ef5f22;
+  --accent-ink:  #b23e0d;  /* texte accent sur fond clair : #ef5f22 ne donnait que 2.84:1 */
+  --accent-soft: #ffe9dd;
+  --success:     #0d7a54;
+  --success-soft:#dff4ea;
+  --danger:      #c22a20;
+  --danger-soft: #fde8e6;
+  --gold:        #c99700;
+
+  --r-sm: 8px; --r-md: 12px; --r-lg: 18px; --r-full: 999px;
+  --sp: 0.25rem;
+  --shadow-1: 0 1px 2px rgba(17,24,45,.06), 0 1px 3px rgba(17,24,45,.05);
+  --shadow-2: 0 4px 12px rgba(17,24,45,.07), 0 2px 4px rgba(17,24,45,.04);
+  --shadow-3: 0 18px 40px -16px rgba(17,24,45,.25);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent);
+  --ease: cubic-bezier(.2,.7,.3,1);
+}
+/* Pas de nesting CSS ici : la forme @media > :root reste lisible par Safari 15. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0b0f17; --bg-tint:#111726; --surface:#141a26; --surface-2:#1b2331;
+    --border:#252f41; --border-strong:#33405a;
+    --text:#e9edf6; --muted:#9aa4b8; --faint:#828ca4;
+    --primary:#7d8cff; --primary-ink:#9aa5ff; --primary-soft:#1d2440;
+    --accent:#ff8149; --accent-ink:#ff8149; --accent-soft:#33200f;
+    --success:#37c08b; --success-soft:#11291f;
+    --danger:#ff6b5e; --danger-soft:#2c1512;
+    --gold:#e2b93b;
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-2: 0 6px 16px rgba(0,0,0,.45);
+    --shadow-3: 0 18px 40px -16px rgba(0,0,0,.7);
+  }
+}
+[data-theme="dark"] {
+  --bg:#0b0f17; --bg-tint:#111726; --surface:#141a26; --surface-2:#1b2331;
+  --border:#252f41; --border-strong:#33405a;
+  --text:#e9edf6; --muted:#9aa4b8; --faint:#828ca4;
+  --primary:#7d8cff; --primary-ink:#9aa5ff; --primary-soft:#1d2440;
+  --accent:#ff8149; --accent-ink:#ff8149; --accent-soft:#33200f;
+  --success:#37c08b; --success-soft:#11291f;
+  --danger:#ff6b5e; --danger-soft:#2c1512;
+  --gold:#e2b93b;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-2: 0 6px 16px rgba(0,0,0,.45);
+  --shadow-3: 0 18px 40px -16px rgba(0,0,0,.7);
+}
+
+/* ============ BASE ============ */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+body {
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+}
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto 0; height: 420px; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(70% 90% at 12% -10%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 62%),
+    radial-gradient(60% 80% at 92% -20%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%);
+}
+h1, h2, h3 { line-height: 1.2; letter-spacing: -.02em; font-weight: 700; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:where(a, button, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary); outline-offset: 2px; border-radius: var(--r-sm);
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.num { font-variant-numeric: tabular-nums; }
+
+/* ============ SHELL ============ */
+.shell { max-width: 1140px; margin-inline: auto; padding-inline: clamp(1rem, 4vw, 2rem); }
+
+.appbar {
+  position: sticky; top: 0; z-index: 40;
+  backdrop-filter: saturate(180%) blur(14px);
+  background: var(--bg); /* fallback si color-mix() n'est pas supporté */
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border-bottom: 1px solid transparent;
+  transition: border-color .2s var(--ease), background .2s var(--ease);
+  padding-top: env(safe-area-inset-top);
+}
+.appbar.is-stuck { border-bottom-color: var(--border); background: var(--bg); background: color-mix(in srgb, var(--bg) 94%, transparent); }
+.appbar__in { display: flex; align-items: center; gap: .75rem; height: 60px; }
+.brand { display: flex; align-items: center; gap: .55rem; font-weight: 750; letter-spacing: -.02em; font-size: 1.05rem; }
+.brand__mark {
+  width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px;
+  background: var(--primary);
+  background: linear-gradient(140deg, var(--primary), color-mix(in srgb, var(--accent) 65%, var(--primary)));
+  font-size: 1rem; box-shadow: var(--shadow-1);
+}
+.appbar__spacer { flex: 1; }
+.icon-btn {
+  width: 38px; height: 38px; display: grid; place-items: center;
+  border: 1px solid var(--border); background: var(--surface); border-radius: 10px;
+  box-shadow: var(--shadow-1); font-size: 1rem;
+  transition: transform .15s var(--ease), border-color .15s var(--ease);
+}
+.icon-btn:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+
+/* ============ HERO ============ */
+.hero { padding: clamp(1.5rem, 5vw, 2.75rem) 0 1.25rem; }
+.hero h1 { font-size: clamp(1.75rem, 5.5vw, 2.6rem); }
+.hero p { color: var(--muted); margin-top: .5rem; max-width: 48ch; font-size: clamp(.95rem, 2.5vw, 1.05rem); }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .75rem;
+  padding: .28rem .7rem; border-radius: var(--r-full);
+  background: var(--accent-soft); color: var(--accent-ink);
+  font-size: .75rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+}
+.hero__stats { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1.25rem; }
+.stat__n { font-size: 1.3rem; font-weight: 750; letter-spacing: -.02em; }
+.stat__l { font-size: .78rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+
+/* ============ CARDS / GRID ============ */
+/* Cartes étirées à la hauteur de leur ligne : les creux sous les cartes courtes
+   deviennent de la marge intérieure au lieu de trous entre les cartes.
+   (Un layout en colonnes tasserait mieux, mais casserait l'ordre de lecture.) */
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: stretch; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 1.25rem; box-shadow: var(--shadow-1);
+}
+.card--wide { grid-column: 1 / -1; }
+.card__head { display: flex; align-items: center; gap: .55rem; margin-bottom: 1rem; }
+.card__ico {
+  width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 9px;
+  background: var(--surface-2); font-size: .95rem;
+}
+.card__title { font-size: 1rem; font-weight: 700; letter-spacing: -.01em; }
+.card__hint { margin-left: auto; font-size: .75rem; color: var(--faint); font-weight: 600; }
+
+/* ============ FORM ============ */
+.field { margin-bottom: .9rem; }
+.field:last-child { margin-bottom: 0; }
+.field > label, .field-label {
+  display: block; font-size: .8rem; font-weight: 650; color: var(--muted);
+  margin-bottom: .35rem; letter-spacing: .01em;
+}
+.input, select.input {
+  width: 100%; padding: .62rem .75rem;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  font-size: .95rem; transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+}
+select.input {
+  appearance: none; padding-right: 2.1rem;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 17px) 55%, calc(100% - 12px) 55%;
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+}
+.input:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
+.input:invalid:not(:placeholder-shown) { border-color: var(--danger); }
+.hint { display: block; margin-top: .3rem; font-size: .75rem; color: var(--faint); }
+.hint--err { color: var(--danger); font-weight: 600; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+/* Les trois compteurs côte à côte : la carte Voyageurs ne fait plus le double
+   de hauteur des autres cartes de la même ligne. */
+.pax { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
+.pax .field { margin-bottom: .9rem; }
+.pax .stepper button { width: 32px; height: 34px; font-size: 1rem; }
+.pax .stepper .input { padding: .5rem .25rem; }
+@media (max-width: 520px) { .pax { grid-template-columns: 1fr; } }
+
+/* stepper */
+.stepper { display: flex; align-items: center; gap: .4rem; }
+.stepper .input { text-align: center; flex: 1; min-width: 3ch; padding-inline: .2rem; }
+/* Les flèches natives mangeaient toute la largeur du champ quand les trois compteurs
+   passent côte à côte : les boutons − / + font déjà le travail. */
+.stepper .input::-webkit-outer-spin-button,
+.stepper .input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.stepper .input { -moz-appearance: textfield; appearance: textfield; }
+.stepper button {
+  width: 38px; height: 38px; flex: none; border-radius: var(--r-md);
+  border: 1px solid var(--border-strong); background: var(--surface-2);
+  font-size: 1.1rem; line-height: 1; font-weight: 600; color: var(--muted);
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.stepper button:hover:not(:disabled) { background: var(--primary-soft); color: var(--primary); }
+.stepper button:disabled { opacity: .4; cursor: not-allowed; }
+
+/* chips / segmented */
+.chips { display: flex; flex-wrap: wrap; gap: .45rem; }
+.chip {
+  padding: .45rem .8rem; border-radius: var(--r-full);
+  border: 1px solid var(--border-strong); background: var(--surface);
+  font-size: .85rem; font-weight: 600; color: var(--muted);
+  transition: all .15s var(--ease);
+}
+.chip:hover { border-color: var(--primary); color: var(--primary); }
+.chip[aria-pressed="true"] {
+  background: var(--primary); border-color: var(--primary); color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+.seg {
+  display: flex; gap: .25rem; padding: .25rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md);
+}
+.seg button {
+  flex: 1; padding: .48rem .6rem; border: 0; border-radius: 9px; background: transparent;
+  font-size: .86rem; font-weight: 650; color: var(--muted); transition: all .15s var(--ease);
+}
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); }
+
+/* checkbox */
+.check { display: flex; align-items: flex-start; gap: .6rem; cursor: pointer; font-size: .9rem; }
+.check input { width: 18px; height: 18px; margin-top: 2px; flex: none; accent-color: var(--primary); cursor: pointer; }
+.months { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: .4rem; }
+.month {
+  padding: .45rem .3rem; border-radius: var(--r-md); border: 1px solid var(--border-strong);
+  background: var(--surface); font-size: .8rem; font-weight: 600; color: var(--muted);
+  transition: all .15s var(--ease);
+}
+.month:hover { border-color: var(--primary); }
+.month[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-ink); }
+
+/* range */
+.range-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .3rem; }
+.range-val { font-size: 1.15rem; font-weight: 750; letter-spacing: -.02em; }
+input[type=range] { width: 100%; accent-color: var(--primary); height: 24px; cursor: pointer; }
+
+/* ============ BUTTONS ============ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .45rem;
+  padding: .7rem 1.1rem; border: 1px solid transparent; border-radius: var(--r-md);
+  font-size: .92rem; font-weight: 650; transition: transform .12s var(--ease), box-shadow .15s var(--ease), background .15s var(--ease);
+}
+.btn:active { transform: scale(.985); }
+.btn--primary { background: var(--primary); color: #fff; box-shadow: 0 3px 10px color-mix(in srgb, var(--primary) 32%, transparent); }
+.btn--primary:hover { background: var(--primary-ink); }
+.btn--ghost { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
+.btn--ghost:hover { border-color: var(--primary); color: var(--primary); }
+.btn--hunt {
+  width: 100%; padding: .85rem 1.2rem; font-size: 1rem; color: #fff;
+  background: var(--accent);
+  background: linear-gradient(120deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--primary)));
+  box-shadow: 0 6px 18px -4px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.btn--hunt:hover { filter: brightness(1.06); }
+.btn--hunt:disabled { opacity: .55; cursor: progress; }
+
+.actionbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+  padding: .75rem clamp(1rem, 4vw, 2rem) calc(.75rem + env(safe-area-inset-bottom));
+  background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(14px);
+  border-top: 1px solid var(--border);
+}
+.actionbar__in { max-width: 1140px; margin-inline: auto; display: flex; gap: .6rem; align-items: center; }
+.actionbar .btn--hunt { flex: 2; }
+.actionbar .btn--ghost { flex: 0 0 auto; }
+
+/* ============ ALERT ============ */
+.alert {
+  display: flex; gap: .6rem; align-items: flex-start;
+  padding: .75rem .9rem; border-radius: var(--r-md); font-size: .88rem;
+  border: 1px solid transparent; margin-bottom: 1rem;
+}
+.alert--info { background: var(--primary-soft); border-color: var(--primary); border-color: color-mix(in srgb, var(--primary) 25%, transparent); color: var(--primary-ink); }
+.alert--warn { background: var(--accent-soft);  border-color: var(--accent);  border-color: color-mix(in srgb, var(--accent) 30%, transparent);  color: var(--accent-ink); }
+.alert--err  { background: var(--danger-soft);  border-color: var(--danger);  border-color: color-mix(in srgb, var(--danger) 30%, transparent);  color: var(--danger); }
+
+/* ============ RESULTS ============ */
+.results-head { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin: 1.25rem 0 1rem; }
+.results-head h2 { font-size: 1.35rem; }
+.results-head .count { color: var(--muted); font-size: .9rem; }
+.sortbar { margin-left: auto; display: flex; gap: .35rem; }
+
+.deals { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.deal {
+  position: relative; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 1.15rem; box-shadow: var(--shadow-1); overflow: hidden;
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease), border-color .18s var(--ease);
+}
+.deal:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); border-color: var(--border-strong); }
+.deal--best { border-color: var(--gold); box-shadow: var(--shadow-2); }
+.deal--best::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+  background: linear-gradient(90deg, var(--gold), var(--accent));
+}
+.deal__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: .9rem; }
+.deal__rank { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.medal { font-size: 1.35rem; line-height: 1; }
+.deal__dest { font-size: 1.08rem; font-weight: 700; letter-spacing: -.015em; }
+.deal__sub { font-size: .8rem; color: var(--faint); margin-top: .1rem; }
+.deal__price { text-align: right; flex: none; }
+.deal__total { font-size: 1.75rem; font-weight: 780; letter-spacing: -.03em; color: var(--accent); line-height: 1; }
+.deal__per { font-size: .74rem; color: var(--faint); margin-top: .2rem; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: .25rem;
+  padding: .18rem .5rem; border-radius: var(--r-full);
+  font-size: .68rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+}
+.badge--demo { background: var(--surface-2); color: var(--faint); }
+.badge--ok   { background: var(--success-soft); color: var(--success); }
+.badge--eu   { background: var(--primary-soft); color: var(--primary-ink); }
+
+.specs { display: grid; gap: .55rem; padding: .85rem 0; border-block: 1px solid var(--border); }
+.spec { display: grid; grid-template-columns: 22px 1fr auto; gap: .55rem; align-items: baseline; font-size: .87rem; }
+.spec__k { color: var(--muted); }
+.spec__v { text-align: right; font-weight: 600; }
+.spec__v small { display: block; font-weight: 400; color: var(--faint); font-size: .76rem; }
+
+.bar { display: flex; height: 7px; border-radius: var(--r-full); overflow: hidden; margin: .8rem 0 .45rem; background: var(--surface-2); }
+.bar > i { display: block; }
+.bar__flight { background: var(--primary); }
+.bar__hotel  { background: var(--accent); }
+.bar__extra  { background: var(--success); }
+.legend { display: flex; flex-wrap: wrap; gap: .75rem; font-size: .75rem; color: var(--muted); }
+.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 3px; margin-right: .3rem; }
+
+.deal__cta { display: flex; gap: .5rem; margin-top: .9rem; }
+.deal__cta .btn { flex: 1; padding: .58rem .7rem; font-size: .84rem; }
+
+/* skeleton */
+.skeleton { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 1.15rem; }
+.sk { background: linear-gradient(90deg, var(--surface-2) 25%, var(--bg-tint) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: sk 1.3s infinite linear; border-radius: 6px; }
+@keyframes sk { to { background-position: -200% 0; } }
+
+.empty { text-align: center; padding: 3rem 1rem; }
+.empty__ico { font-size: 2.5rem; }
+.empty h3 { margin: .75rem 0 .35rem; font-size: 1.1rem; }
+.empty p { color: var(--muted); font-size: .9rem; max-width: 42ch; margin-inline: auto; }
+
+/* ============ DIALOG ============ */
+dialog {
+  border: 1px solid var(--border); border-radius: var(--r-lg); padding: 0;
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow-3);
+  width: min(440px, calc(100vw - 2rem)); max-height: 80dvh;
+}
+dialog::backdrop { background: rgba(9,12,20,.55); backdrop-filter: blur(3px); }
+.dlg__head { display: flex; align-items: center; gap: .5rem; padding: 1rem 1.15rem; border-bottom: 1px solid var(--border); }
+.dlg__head h3 { font-size: 1rem; }
+.dlg__body { padding: 1rem 1.15rem; overflow-y: auto; }
+.saved { display: flex; align-items: center; gap: .6rem; padding: .65rem 0; border-bottom: 1px solid var(--border); }
+.saved:last-child { border-bottom: 0; }
+.saved__n { flex: 1; min-width: 0; }
+.saved__n b { display: block; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved__n span { font-size: .75rem; color: var(--faint); }
+.saved .btn { padding: .35rem .65rem; font-size: .78rem; }
+.link-btn { background: none; border: 0; color: var(--danger); font-size: .78rem; font-weight: 650; padding: .35rem; }
+
+.footnote { color: var(--faint); font-size: .78rem; text-align: center; padding: 2rem 0 1rem; }
+
+@media (max-width: 480px) {
+  .row2 { grid-template-columns: 1fr; }
+  .deal__total { font-size: 1.5rem; }
+  /* Le libellé long passait sur deux lignes et doublait la hauteur de la barre d'action. */
+  .wide-only { display: none; }
+  .actionbar .btn--hunt { white-space: nowrap; }
+  .actionbar .btn--ghost { padding: .7rem .8rem; }
+}
+</style>
+</head>
+<body>
+
+<header class="appbar" id="appbar">
+  <div class="shell appbar__in">
+    <div class="brand"><span class="brand__mark" aria-hidden="true">✈️</span> Travel Deal Hunter</div>
+    <div class="appbar__spacer"></div>
+    <button class="icon-btn" id="themeBtn" type="button" aria-label="Changer de thème" title="Changer de thème">🌗</button>
+  </div>
+</header>
+
+<main id="app" class="shell" aria-live="polite"></main>
+
+<div class="actionbar" id="actionbar"></div>
+
+<dialog id="savedDlg" aria-labelledby="savedTitle">
+  <div class="dlg__head">
+    <h3 id="savedTitle">📂 Recherches sauvegardées</h3>
+    <div class="appbar__spacer"></div>
+    <button class="icon-btn" type="button" onclick="document.getElementById('savedDlg').close()" aria-label="Fermer">✕</button>
+  </div>
+  <div class="dlg__body" id="savedBody"></div>
+</dialog>
+
+<script>
+"use strict";
+
+/* ==================== UTIL ==================== */
+const ESC_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+/** Escape every interpolation that reaches innerHTML. Fixes the stored-XSS in the original. */
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ESC_MAP[c]);
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+const int = (v, dflt = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : dflt; };
+const num = (v, dflt = 0) => { const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : dflt; };
+const eur = n => Math.round(n).toLocaleString("fr-FR") + " €";
+const MONTHS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+const today = () => new Date().toISOString().slice(0, 10);
+const addDays = (iso, d) => { const t = new Date(iso + "T12:00:00"); t.setDate(t.getDate() + d); return t.toISOString().slice(0, 10); };
+const nightsBetween = (a, b) => Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 864e5);
+
+/* ==================== DATA (démo) ==================== */
+/* hotelRate = prix chambre / nuit en petit-déjeuner ; flightBase = prix adulte A/R */
+const DEALS = [
+  { id:"RAK", city:"Marrakech", country:"Maroc", schengen:false, airline:"Air France",  times:"08:15 → 10:30", hotel:"Riad Palais Salam",   stars:4, rating:8.7, flightBase:325, hotelRate:120, transferMin:35, transfer:80,  beachKm:180, family:true,  lat:31.6295, lon:-7.9811, tags:["chaleur","beaux-paysages","rapport-qualite-prix"] },
+  { id:"ESU", city:"Essaouira", country:"Maroc", schengen:false, airline:"Ryanair",     times:"10:00 → 12:15", hotel:"Les Jardins de Tanjia",stars:4, rating:8.5, flightBase:290, hotelRate:115, transferMin:25, transfer:80,  beachKm:1,   family:true,  lat:31.5085, lon:-9.7595, tags:["plage","chaleur","peu-touristique","rapport-qualite-prix"] },
+  { id:"TFS", city:"Ténérife",  country:"Canaries", schengen:true, airline:"EasyJet",   times:"09:30 → 13:45", hotel:"Club Med Magma",      stars:4, rating:8.4, flightBase:360, hotelRate:130, transferMin:45, transfer:100, beachKm:0.3, family:true,  lat:28.05, lon:-16.7167, tags:["plage","chaleur","beaux-paysages"] },
+  { id:"AGA", city:"Agadir",    country:"Maroc", schengen:false, airline:"Royal Air Maroc", times:"07:45 → 10:50", hotel:"Sofitel Thalassa",stars:5, rating:8.9, flightBase:295, hotelRate:138, transferMin:20, transfer:80,  beachKm:0.2, family:true,  lat:30.4278, lon:-9.5981, tags:["plage","chaleur","rapport-qualite-prix"] },
+  { id:"CHQ", city:"La Canée",  country:"Crète", schengen:true, airline:"Aegean",       times:"11:00 → 15:30", hotel:"Doma Boutique",       stars:4, rating:8.6, flightBase:355, hotelRate:135, transferMin:30, transfer:90,  beachKm:2,   family:false, lat:35.5138, lon:24.018, tags:["plage","beaux-paysages","peu-touristique"] },
+  { id:"LIS", city:"Lisbonne",  country:"Portugal", schengen:true, airline:"TAP Air",   times:"09:00 → 11:20", hotel:"Memmo Alfama",        stars:4, rating:8.8, flightBase:210, hotelRate:110, transferMin:25, transfer:60,  beachKm:22,  family:false, lat:38.7223, lon:-9.1393, tags:["beaux-paysages","rapport-qualite-prix"] },
+  { id:"BCN", city:"Barcelone", country:"Espagne", schengen:true, airline:"Vueling",    times:"10:30 → 12:20", hotel:"W Barcelona",         stars:5, rating:8.7, flightBase:240, hotelRate:140, transferMin:30, transfer:70,  beachKm:0.1, family:true,  lat:41.3851, lon:2.1734, tags:["plage","beaux-paysages"] },
+  { id:"FAO", city:"Faro",      country:"Portugal", schengen:true, airline:"Transavia", times:"06:40 → 08:45", hotel:"Vila Galé Albacora",  stars:4, rating:8.3, flightBase:195, hotelRate:98,  transferMin:35, transfer:65,  beachKm:1.5, family:true,  lat:37.0194, lon:-7.9304, tags:["plage","chaleur","peu-touristique","rapport-qualite-prix"] },
+  { id:"DJE", city:"Djerba",    country:"Tunisie", schengen:false, airline:"Nouvelair", times:"12:10 → 14:35", hotel:"Radisson Blu Palace", stars:5, rating:8.5, flightBase:265, hotelRate:105, transferMin:20, transfer:55,  beachKm:0.1, family:true,  lat:33.8076, lon:10.8451, tags:["plage","chaleur","rapport-qualite-prix","peu-touristique"] },
+  { id:"PMI", city:"Palma",     country:"Baléares", schengen:true, airline:"Volotea",   times:"14:20 → 16:05", hotel:"Iberostar Playa",     stars:4, rating:8.2, flightBase:225, hotelRate:125, transferMin:25, transfer:70,  beachKm:0.2, family:true,  lat:39.5696, lon:2.6502, tags:["plage","chaleur","beaux-paysages"] }
+];
+
+const PENSIONS = {
+  "petit-dej":     { label: "Petit-déjeuner",    mult: 1.00 },
+  "demi-pension":  { label: "Demi-pension",      mult: 1.16 },
+  "complet":       { label: "Pension complète",  mult: 1.30 },
+  "all-inclusive": { label: "All-inclusive",     mult: 1.48 }
+};
+const AIRPORTS = [
+  { code: "PAR", label: "Paris — tous aéroports" },
+  { code: "LYS", label: "Lyon Saint-Exupéry" },
+  { code: "MRS", label: "Marseille Provence" },
+  { code: "NCE", label: "Nice Côte d'Azur" },
+  { code: "TLS", label: "Toulouse Blagnac" },
+  { code: "BOD", label: "Bordeaux Mérignac" },
+  { code: "NTE", label: "Nantes Atlantique" },
+  { code: "LIL", label: "Lille Lesquin" }
+];
+
+const PREFS = [
+  { id:"plage",                label:"🏖️ Plage" },
+  { id:"chaleur",              label:"☀️ Chaleur" },
+  { id:"beaux-paysages",       label:"🏞️ Beaux paysages" },
+  { id:"peu-touristique",      label:"🤫 Peu touristique" },
+  { id:"rapport-qualite-prix", label:"💶 Bon rapport" }
+];
+
+/* ==================== STATE ==================== */
+const DEFAULTS = Object.freeze({
+  origin: "PAR",
+  adults: 2, children: 1, childrenAges: [3], babies: 1, babiesAges: [10],
+  flexibleDates: false, departureDate: "", returnDate: "",
+  selectedMonths: [4, 5], tripDuration: 8,
+  destinationType: "flexible", destinations: [],
+  schengenOnly: false, maxBudget: 2500,
+  minStars: 4, minRating: 7.5, pension: "demi-pension",
+  maxTransfer: 60, maxBeachDistance: 5, familyHotel: true,
+  preferences: ["plage", "chaleur", "beaux-paysages", "peu-touristique", "rapport-qualite-prix"]
+});
+
+const state = {
+  view: "form",
+  loading: false,
+  error: null,
+  sort: "price",
+  live: null,          // Map code IATA -> tarif réel, ou null
+  liveStatus: null,    // "reel" | "non-configure" | "erreur" | "devise"
+  liveMode: null,      // "test" (bac à sable Duffel) | "live"
+  stays: null,         // Map code -> tarif hôtelier réel, ou null
+  staysStatus: null,   // "reel" | "non-configure" | "erreur"
+  staysFournisseur: null,   // "liteapi" | "duffel"
+  results: [],
+  formData: structuredClone(DEFAULTS)
+};
+
+/* Merge an untrusted saved object onto the defaults: missing keys can no longer crash
+   `.includes` / `.join`, and unknown keys are dropped. */
+function sanitizeForm(raw) {
+  const f = structuredClone(DEFAULTS);
+  if (!raw || typeof raw !== "object") return f;
+  f.origin        = AIRPORTS.some(a => a.code === raw.origin) ? raw.origin : f.origin;
+  f.adults        = clamp(int(raw.adults, f.adults), 1, 9);
+  f.children      = clamp(int(raw.children, f.children), 0, 6);
+  f.babies        = clamp(int(raw.babies, f.babies), 0, 4);
+  f.childrenAges  = Array.isArray(raw.childrenAges) ? raw.childrenAges.map(a => clamp(int(a, 3), 0, 17)) : f.childrenAges;
+  f.babiesAges    = Array.isArray(raw.babiesAges) ? raw.babiesAges.map(a => clamp(int(a, 12), 0, 23)) : f.babiesAges;
+  f.flexibleDates = !!raw.flexibleDates;
+  f.departureDate = /^\d{4}-\d{2}-\d{2}$/.test(raw.departureDate) ? raw.departureDate : "";
+  f.returnDate    = /^\d{4}-\d{2}-\d{2}$/.test(raw.returnDate) ? raw.returnDate : "";
+  f.selectedMonths= Array.isArray(raw.selectedMonths) ? raw.selectedMonths.map(m => int(m, 0)).filter(m => m >= 1 && m <= 12) : f.selectedMonths;
+  f.tripDuration  = clamp(int(raw.tripDuration, f.tripDuration), 2, 28);
+  f.destinationType = raw.destinationType === "specific" ? "specific" : "flexible";
+  f.destinations  = Array.isArray(raw.destinations) ? raw.destinations.filter(id => DEALS.some(d => d.id === id)) : [];
+  f.schengenOnly  = !!raw.schengenOnly;
+  f.maxBudget     = clamp(int(raw.maxBudget, f.maxBudget), 300, 30000);
+  f.minStars      = clamp(int(raw.minStars, f.minStars), 3, 5);
+  f.minRating     = clamp(num(raw.minRating, f.minRating), 0, 10);
+  f.pension       = Object.hasOwn(PENSIONS, raw.pension) ? raw.pension : f.pension;
+  f.maxTransfer   = clamp(int(raw.maxTransfer, f.maxTransfer), 10, 240);
+  f.familyHotel   = raw.familyHotel !== false;
+  f.preferences   = Array.isArray(raw.preferences) ? raw.preferences.filter(p => PREFS.some(x => x.id === p)) : f.preferences;
+  syncAges(f);
+  return f;
+}
+
+/* childrenAges / babiesAges must always match the declared counts. */
+function syncAges(f) {
+  while (f.childrenAges.length < f.children) f.childrenAges.push(6);
+  f.childrenAges.length = f.children;
+  while (f.babiesAges.length < f.babies) f.babiesAges.push(12);
+  f.babiesAges.length = f.babies;
+}
+
+/* ==================== PRICING + SEARCH ==================== */
+/** Prix complet d'un deal pour une composition familiale donnée. Testé par selfCheck(). */
+function priceDeal(deal, f, nights, live, sejour) {
+  const kids = f.children, babies = f.babies;
+  // Amadeus renvoie un total POUR TOUS LES VOYAGEURS (il reçoit adults/children/
+  // infants) : on le prend tel quel. Sans tarif réel on retombe sur le modèle, qui
+  // lui raisonne par adulte et doit donc être multiplié.
+  const reel = live && Number.isFinite(live.total) && live.total > 0 ? live.total : null;
+  const flight = reel !== null ? reel : deal.flightBase * (f.adults + kids * 0.75) + babies * 35;
+  // Même règle que chambres() dans netlify/functions/stays.mjs : 3 couchages par chambre,
+  // mais jamais plus de chambres que d'adultes — une chambre sans adulte n'est pas
+  // réservable. Les deux formules DOIVENT rester identiques : le tarif hôtelier réel est
+  // multiplié par le nombre de chambres calculé côté fonction, et affiché ici.
+  const rooms  = Math.max(1, Math.min(f.adults, Math.ceil((f.adults + kids) / 3)));
+  // Le tarif hôtelier réel couvre déjà le séjour entier et toutes les chambres :
+  // ni multiplication par les nuits, ni par les chambres, ni coefficient de pension.
+  const hotelReel = sejour && Number.isFinite(sejour.total) && sejour.total > 0 ? sejour.total : null;
+  const hotel  = hotelReel !== null ? hotelReel : deal.hotelRate * nights * rooms * PENSIONS[f.pension].mult;
+  const extra  = deal.transfer * rooms;
+  const total  = flight + hotel + extra;
+  return {
+    priceFlight: Math.round(flight),
+    priceHotel: Math.round(hotel),
+    priceExtra: Math.round(extra),
+    total: Math.round(total),
+    rooms, nights,
+    flightReel: reel !== null,
+    hotelReel: hotelReel !== null,
+    hotelNom: hotelReel !== null && sejour.nom ? sejour.nom : null,
+    hotelEtoiles: hotelReel !== null && Number.isFinite(sejour.etoiles) ? sejour.etoiles : null,
+    hotelNote: hotelReel !== null && Number.isFinite(sejour.note) ? sejour.note : null,
+    hotelPension: hotelReel !== null ? sejour.pensionNom : null,
+    hotelPublic: hotelReel !== null ? sejour.publicAmount : null,
+    // Quand le tarif est réel, la compagnie et les horaires doivent l'être aussi :
+    // afficher un badge « vol réel » au-dessus des horaires de démonstration serait
+    // un mensonge d'affichage.
+    compagnieReelle: reel !== null && live.airline ? live.airline : null,
+    departReel: reel !== null ? live.departureAt : null,
+    retourReel: reel !== null ? live.returnAt : null,
+    escalesReelles: reel !== null && Number.isFinite(live.transfers) ? live.transfers : null
+  };
+}
+
+function matchScore(deal, f) {
+  let s = 0;
+  for (const p of f.preferences) if (deal.tags.includes(p)) s += 2;
+  if (f.familyHotel && deal.family) s += 1;
+  s += (deal.rating - 7) * 1.5;
+  return Math.round(s * 10) / 10;
+}
+
+/** Applique TOUS les filtres du formulaire. L'original n'en appliquait aucun sauf Schengen. */
+function search(f, live, stays) {
+  // Garde-fou : des dates vides ou invalides donnaient un nombre de nuits NaN,
+  // donc des totaux NaN, donc un filtre budget qui laissait tout passer.
+  const raw = f.flexibleDates ? f.tripDuration : nightsBetween(f.departureDate, f.returnDate);
+  const nights = Number.isFinite(raw) && raw > 0
+    ? clamp(raw, 1, 60)
+    : clamp(int(f.tripDuration, DEFAULTS.tripDuration), 1, 60);
+
+  const rejected = { stars: 0, rating: 0, schengen: 0, transfer: 0, budget: 0, dest: 0, family: 0 };
+  const kept = [];
+
+  for (const d of DEALS) {
+    if (f.destinationType === "specific" && f.destinations.length && !f.destinations.includes(d.id)) { rejected.dest++; continue; }
+    if (f.schengenOnly && !d.schengen) { rejected.schengen++; continue; }
+    if (d.stars < f.minStars) { rejected.stars++; continue; }
+    if (d.rating < f.minRating) { rejected.rating++; continue; }
+    if (d.transferMin > f.maxTransfer) { rejected.transfer++; continue; }
+    if (f.familyHotel && !d.family) { rejected.family++; continue; }
+    const p = priceDeal(d, f, nights, live && live.get ? live.get(d.id) : null, stays && stays.get ? stays.get(d.id) : null);
+    if (p.total > f.maxBudget) { rejected.budget++; continue; }
+    kept.push({ ...d, ...p, score: matchScore(d, f) });
+  }
+  return { rows: kept, nights, rejected };
+}
+
+function sortRows(rows, mode) {
+  const c = rows.slice();
+  if (mode === "score")  c.sort((a, b) => b.score - a.score || a.total - b.total);
+  else if (mode === "rating") c.sort((a, b) => b.rating - a.rating || a.total - b.total);
+  else c.sort((a, b) => a.total - b.total);
+  return c;
+}
+
+function topReason(rejected) {
+  const labels = {
+    budget: "ton budget max", stars: "le nombre d'étoiles min", rating: "la note min",
+    transfer: "la durée de transfert max", schengen: "le filtre Schengen",
+    dest: "les destinations choisies", family: "le filtre hôtel familial"
+  };
+  const [key, n] = Object.entries(rejected).sort((a, b) => b[1] - a[1])[0] || [];
+  return n ? `${n} séjour${n > 1 ? "s" : ""} écarté${n > 1 ? "s" : ""} par ${labels[key]}.` : "";
+}
+
+/* ==================== VALIDATION ==================== */
+/** Valide selon le MODE actif. Bug original : les dates étaient exigées même en mode flexible,
+    ce qui rendait la recherche impossible dans ce mode. */
+function validate(f) {
+  if (f.flexibleDates) {
+    if (!f.selectedMonths.length) return "Choisis au moins un mois de départ.";
+    if (f.tripDuration < 2) return "La durée du séjour doit être d'au moins 2 nuits.";
+    return null;
+  }
+  if (!f.departureDate || !f.returnDate) return "Renseigne les dates de départ et de retour.";
+  if (f.returnDate <= f.departureDate) return "Le retour doit être après le départ.";
+  if (f.departureDate < today()) return "La date de départ est déjà passée.";
+  if (nightsBetween(f.departureDate, f.returnDate) > 60) return "60 nuits maximum par recherche.";
+  return null;
+}
+
+/* ==================== VIEWS ==================== */
+function viewForm() {
+  const f = state.formData;
+  const travellers = f.adults + f.children + f.babies;
+  const est = search(f, state.live, state.stays);
+
+  return `
+  <section class="hero">
+    <span class="eyebrow">🔥 Chasse maximale</span>
+    <h1>Ton meilleur voyage,<br>au meilleur prix.</h1>
+    <p>Vol, hôtel et transfert comparés ensemble — le total que tu paieras vraiment, pas un prix d'appel.</p>
+    <div class="hero__stats">
+      <div><div class="stat__n num">${DEALS.length}</div><div class="stat__l">Séjours suivis</div></div>
+      <div><div class="stat__n num">${travellers}</div><div class="stat__l">Voyageur${travellers > 1 ? "s" : ""}</div></div>
+      <div><div class="stat__n num">${est.rows.length}</div><div class="stat__l">Correspondent</div></div>
+    </div>
+  </section>
+
+  ${state.error ? `<div class="alert alert--err" role="alert"><span>⚠️</span><div>${esc(state.error)}</div></div>` : ""}
+
+  <div class="grid">
+
+    <div class="card">
+      <div class="card__head"><span class="card__ico">👥</span><span class="card__title">Voyageurs</span>
+        <span class="card__hint num">${travellers} pers.</span></div>
+
+      <div class="pax">
+        <div class="field">
+          <label for="adults">Adultes</label>
+          ${stepper("adults", f.adults, 1, 9)}
+        </div>
+        <div class="field">
+          <label for="children">Enfants</label>
+          ${stepper("children", f.children, 0, 6)}
+        </div>
+        <div class="field">
+          <label for="babies">Bébés</label>
+          ${stepper("babies", f.babies, 0, 4)}
+        </div>
+      </div>
+      <p class="hint" style="margin:-.4rem 0 .9rem">Enfants 2–17 ans · bébés de moins de 2 ans.</p>
+
+      ${f.children > 0 ? `
+      <div class="field">
+        <span class="field-label">Âge de chaque enfant</span>
+        <div class="row2">
+          ${f.childrenAges.map((a, i) => `
+            <div>
+              <label class="sr-only" for="childAge${i}">Âge enfant ${i + 1}</label>
+              <input class="input" type="number" id="childAge${i}" data-age="child" data-idx="${i}"
+                     value="${esc(a)}" min="2" max="17" inputmode="numeric">
+            </div>`).join("")}
+        </div>
+      </div>` : ""}
+
+      ${f.babies > 0 ? `
+      <div class="field">
+        <span class="field-label">Âge de chaque bébé (mois)</span>
+        <div class="row2">
+          ${f.babiesAges.map((a, i) => `
+            <div>
+              <label class="sr-only" for="babyAge${i}">Âge bébé ${i + 1} en mois</label>
+              <input class="input" type="number" id="babyAge${i}" data-age="baby" data-idx="${i}"
+                     value="${esc(a)}" min="0" max="23" inputmode="numeric">
+            </div>`).join("")}
+        </div>
+      </div>` : ""}
+    </div>
+
+    <div class="card">
+      <div class="card__head"><span class="card__ico">📅</span><span class="card__title">Dates</span></div>
+      <div class="seg" role="group" aria-label="Mode de dates">
+        <button type="button" data-datemode="fixed"    aria-pressed="${!f.flexibleDates}">Dates précises</button>
+        <button type="button" data-datemode="flexible" aria-pressed="${f.flexibleDates}">Flexible</button>
+      </div>
+
+      ${!f.flexibleDates ? `
+        <div class="field" style="margin-top:.9rem">
+          <label for="departureDate">Départ</label>
+          <input class="input" type="date" id="departureDate" value="${esc(f.departureDate)}" min="${today()}">
+        </div>
+        <div class="field">
+          <label for="returnDate">Retour</label>
+          <input class="input" type="date" id="returnDate" value="${esc(f.returnDate)}"
+                 min="${esc(f.departureDate || today())}">
+          ${f.departureDate && f.returnDate && f.returnDate > f.departureDate
+            ? `<span class="hint">${nightsBetween(f.departureDate, f.returnDate)} nuits sur place.</span>`
+            : `<span class="hint">Choisis un départ puis un retour.</span>`}
+        </div>
+      ` : `
+        <div class="field" style="margin-top:.9rem">
+          <span class="field-label">Mois de départ possibles</span>
+          <div class="months" role="group" aria-label="Mois">
+            ${MONTHS.map((m, i) => `
+              <button type="button" class="month" data-month="${i + 1}"
+                      aria-pressed="${f.selectedMonths.includes(i + 1)}">${m}</button>`).join("")}
+          </div>
+        </div>
+        <div class="field">
+          <label for="tripDuration">Durée du séjour</label>
+          <select class="input" id="tripDuration">
+            ${[5, 7, 8, 9, 10, 12, 14, 21].map(n =>
+              `<option value="${n}"${f.tripDuration === n ? " selected" : ""}>${n} nuits</option>`).join("")}
+          </select>
+        </div>
+      `}
+    </div>
+
+    <div class="card">
+      <div class="card__head"><span class="card__ico">🌍</span><span class="card__title">Trajet</span></div>
+      <div class="field">
+        <label for="origin">Aéroport de départ</label>
+        <select class="input" id="origin">
+          ${AIRPORTS.map(a => `<option value="${esc(a.code)}"${f.origin === a.code ? " selected" : ""}>${esc(a.label)} (${esc(a.code)})</option>`).join("")}
+        </select>
+      </div>
+      <span class="field-label">Destination</span>
+      <div class="seg" role="group" aria-label="Type de destination">
+        <button type="button" data-dest="flexible" aria-pressed="${f.destinationType === "flexible"}">Surprends-moi</button>
+        <button type="button" data-dest="specific" aria-pressed="${f.destinationType === "specific"}">Je choisis</button>
+      </div>
+
+      ${f.destinationType === "specific" ? `
+        <div class="field" style="margin-top:.9rem">
+          <span class="field-label">Destinations retenues ${f.destinations.length ? `(${f.destinations.length})` : "— aucune = toutes"}</span>
+          <div class="chips">
+            ${DEALS.map(d => `
+              <button type="button" class="chip" data-destid="${esc(d.id)}"
+                      aria-pressed="${f.destinations.includes(d.id)}">${esc(d.city)}</button>`).join("")}
+          </div>
+        </div>` : ""}
+
+      <div class="field" style="margin-top:.9rem">
+        <label class="check" for="schengenOnly">
+          <input type="checkbox" id="schengenOnly"${f.schengenOnly ? " checked" : ""}>
+          <span>🇪🇺 Espace Schengen uniquement<br><span class="hint">Aucun visa, aucun passeport hors UE à prévoir.</span></span>
+        </label>
+      </div>
+      <div class="field">
+        <label class="check" for="familyHotel">
+          <input type="checkbox" id="familyHotel"${f.familyHotel ? " checked" : ""}>
+          <span>👨‍👩‍👧 Hôtel adapté aux familles</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card__head"><span class="card__ico">💰</span><span class="card__title">Budget</span>
+        <span class="card__hint">total famille</span></div>
+      <div class="field">
+        <div class="range-head">
+          <label for="maxBudget">Budget maximum</label>
+          <span class="range-val num" id="budgetOut">${eur(f.maxBudget)}</span>
+        </div>
+        <input type="range" id="maxBudget" min="500" max="8000" step="50" value="${f.maxBudget}">
+        <span class="hint">Vol + hôtel + transfert, tout compris.</span>
+      </div>
+      <div class="field">
+        <div class="range-head">
+          <label for="maxTransfer">Transfert aéroport → hôtel</label>
+          <span class="range-val num" id="transferOut">${f.maxTransfer} min</span>
+        </div>
+        <input type="range" id="maxTransfer" min="10" max="180" step="5" value="${f.maxTransfer}">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card__head"><span class="card__ico">🏨</span><span class="card__title">Hôtel</span></div>
+      <div class="field">
+        <label for="minStars">Catégorie minimum</label>
+        <select class="input" id="minStars">
+          ${[3, 4, 5].map(s => `<option value="${s}"${f.minStars === s ? " selected" : ""}>${"★".repeat(s)} ${s} étoiles</option>`).join("")}
+        </select>
+      </div>
+      <div class="field">
+        <label for="pension">Pension</label>
+        <select class="input" id="pension">
+          ${Object.entries(PENSIONS).map(([k, v]) =>
+            `<option value="${esc(k)}"${f.pension === k ? " selected" : ""}>${esc(v.label)}${v.mult > 1 ? ` (+${Math.round((v.mult - 1) * 100)} %)` : ""}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field">
+        <div class="range-head">
+          <label for="minRating">Note voyageurs min</label>
+          <span class="range-val num" id="ratingOut">${f.minRating.toFixed(1)}/10</span>
+        </div>
+        <input type="range" id="minRating" min="6" max="9.5" step="0.1" value="${f.minRating}">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card__head"><span class="card__ico">🎨</span><span class="card__title">Ambiance</span>
+        <span class="card__hint">${f.preferences.length} sélection${f.preferences.length > 1 ? "s" : ""}</span></div>
+      <div class="chips" role="group" aria-label="Préférences">
+        ${PREFS.map(p => `
+          <button type="button" class="chip" data-pref="${esc(p.id)}"
+                  aria-pressed="${f.preferences.includes(p.id)}">${esc(p.label)}</button>`).join("")}
+      </div>
+      <p class="hint" style="margin-top:.7rem">Ces choix ne filtrent pas : ils remontent les séjours qui collent le mieux quand tu tries par pertinence.</p>
+    </div>
+
+  </div>
+
+  <p class="footnote">Données de démonstration — aucun prix n'est interrogé en temps réel.</p>`;
+}
+
+function stepper(id, value, min, max) {
+  return `<div class="stepper">
+    <button type="button" data-step="${esc(id)}" data-delta="-1" aria-label="Moins"${value <= min ? " disabled" : ""}>−</button>
+    <input class="input num" type="number" id="${esc(id)}" value="${esc(value)}" min="${min}" max="${max}" inputmode="numeric">
+    <button type="button" data-step="${esc(id)}" data-delta="1" aria-label="Plus"${value >= max ? " disabled" : ""}>+</button>
+  </div>`;
+}
+
+function viewResults() {
+  const f = state.formData;
+
+  if (state.loading) {
+    return `<section class="hero"><h1>Chasse en cours…</h1>
+      <p>Comparaison vol + hôtel + transfert sur ${DEALS.length} séjours.</p></section>
+      <div class="deals">${Array.from({ length: 3 }, () => `
+        <div class="skeleton">
+          <div class="sk" style="height:18px;width:55%"></div>
+          <div class="sk" style="height:32px;width:35%;margin-top:.8rem"></div>
+          <div class="sk" style="height:12px;width:100%;margin-top:1.2rem"></div>
+          <div class="sk" style="height:12px;width:88%;margin-top:.5rem"></div>
+          <div class="sk" style="height:12px;width:70%;margin-top:.5rem"></div>
+          <div class="sk" style="height:7px;width:100%;margin-top:1.2rem"></div>
+        </div>`).join("")}</div>`;
+  }
+
+  const rows = sortRows(state.results, state.sort);
+  const period = f.flexibleDates
+    ? `${f.selectedMonths.map(m => MONTHS[m - 1]).join(", ")} · ${f.tripDuration} nuits`
+    : `${f.departureDate} → ${f.returnDate}`;
+
+  const etatHotels = {
+    "reel": `Tarifs hôteliers réels via ${esc(state.staysFournisseur === "liteapi" ? "LiteAPI" : "Duffel Stays")}.`,
+    "non-configure": "Hôtel estimé par le modèle local — aucune clé hôtelière configurée.",
+    "erreur": "Hôtel estimé par le modèle local — l'API hôtelière n'a rien renvoyé d'exploitable."
+  }[state.staysStatus] || "";
+
+  const bandeau = {
+    "reel": `<div class="alert alert--info"><span>📡</span><div><b>Tarifs de vol réels</b> — remontés par Duffel au départ de ${esc(f.origin)}${state.liveMode === "test" ? ", en <b>mode bac à sable</b> : horaires et prix fictifs" : ""}. ${esc(etatHotels)} Le transfert reste estimé.</div></div>`,
+    "non-configure": `<div class="alert alert--warn"><span>⚙️</span><div><b>Données de démonstration</b> — la variable <code>DUFFEL_TOKEN</code> n'est pas définie côté serveur, aucun tarif réel n'est interrogé.</div></div>`,
+    "erreur": `<div class="alert alert--warn"><span>⚠️</span><div><b>Repli sur la démonstration</b> — l'API de vols n'a rien renvoyé d'exploitable pour ce départ. Les prix affichés sont modélisés.</div></div>`,
+    "devise": `<div class="alert alert--warn"><span>💱</span><div><b>Devise incompatible</b> — ton compte Duffel facture dans une autre devise que l'euro. Les tarifs réels ont été écartés plutôt que d'être additionnés à tort à des prix d'hôtel en euros. Règle la devise du compte sur EUR.</div></div>`
+  }[state.liveStatus] || "";
+
+  const head = `
+    <section class="hero" style="padding-bottom:.5rem">
+      <span class="eyebrow">Résultats</span>
+      <h1>${rows.length} séjour${rows.length > 1 ? "s" : ""} sous ${eur(f.maxBudget)}</h1>
+      <p>${esc(period)} · au départ de ${esc(f.origin)} · ${f.adults} adulte${f.adults > 1 ? "s" : ""}${f.children ? `, ${f.children} enfant${f.children > 1 ? "s" : ""}` : ""}${f.babies ? `, ${f.babies} bébé${f.babies > 1 ? "s" : ""}` : ""} · ${esc(PENSIONS[f.pension].label)}</p>
+    </section>
+    ${bandeau}`;
+
+  if (!rows.length) {
+    return head + `<div class="empty">
+      <div class="empty__ico">🧭</div>
+      <h3>Aucun séjour ne passe tes filtres</h3>
+      <p>${esc(state.lastReason || "")} Remonte le budget, baisse les étoiles ou allonge le transfert accepté.</p>
+      <button class="btn btn--primary" style="margin-top:1.2rem" onclick="goBack()">← Ajuster la recherche</button>
+    </div>`;
+  }
+
+  const sortBtn = (id, label) =>
+    `<button type="button" class="chip" data-sort="${id}" aria-pressed="${state.sort === id}">${label}</button>`;
+
+  return head + `
+    <div class="results-head">
+      <span class="count">Trié par ${state.sort === "price" ? "prix" : state.sort === "score" ? "pertinence" : "note"}</span>
+      <div class="sortbar">${sortBtn("price", "💶 Prix")}${sortBtn("score", "🎯 Pertinence")}${sortBtn("rating", "⭐ Note")}</div>
+    </div>
+    <div class="deals">${rows.map((r, i) => dealCard(r, i, f)).join("")}</div>
+    <p class="footnote">Prix de démonstration calculés localement (vol × voyageurs + ${r0()} nuits d'hôtel + transfert). Les liens ouvrent une vraie recherche chez le fournisseur.</p>`;
+
+  function r0() { return rows[0].nights; }
+}
+
+/** Détail hôtel : données réelles quand le tarif l'est, sinon celles du jeu de démonstration. */
+function detailHotel(r) {
+  const etoiles = Number.isFinite(r.hotelEtoiles) ? r.hotelEtoiles : (r.hotelReel ? null : r.stars);
+  const note = Number.isFinite(r.hotelNote) ? r.hotelNote : (r.hotelReel ? null : r.rating);
+  const bouts = [];
+  if (Number.isFinite(etoiles) && etoiles > 0) bouts.push("★".repeat(Math.min(5, Math.round(etoiles))));
+  if (Number.isFinite(note) && note > 0) bouts.push(`${note}/10`);
+  if (r.hotelReel && r.hotelPension) bouts.push(r.hotelPension);
+  else bouts.push(`${r.rooms} chambre${r.rooms > 1 ? "s" : ""}`);
+  return bouts.join(" · ");
+}
+
+/** Horaires de la carte : ceux de Duffel quand le tarif est réel, sinon ceux du jeu de démonstration. */
+function horaireVol(r) {
+  if (!r.departReel) return r.times;
+  const h = iso => {
+    const m = String(iso).match(/T(\d{2}):(\d{2})/);
+    return m ? `${m[1]}:${m[2]}` : null;
+  };
+  const aller = h(r.departReel);
+  if (!aller) return r.times;
+  const escales = r.escalesReelles === 0 ? "direct"
+    : r.escalesReelles > 0 ? `${r.escalesReelles} escale${r.escalesReelles > 1 ? "s" : ""}`
+    : null;
+  const retour = h(r.retourReel);
+  return `départ ${aller}${retour ? ` · retour ${retour}` : ""}${escales ? ` · ${escales}` : ""}`;
+}
+
+function dealCard(r, i, f) {
+  const medal = ["🥇", "🥈", "🥉"][i] || "";
+  const pax = f.adults + f.children;
+  const per = Math.round(r.total / Math.max(1, pax));
+  const pct = v => (v / r.total * 100).toFixed(1) + "%";
+  const dates = f.flexibleDates ? "" : `${f.departureDate.slice(8)}/${f.departureDate.slice(5, 7)} → ${f.returnDate.slice(8)}/${f.returnDate.slice(5, 7)}`;
+  const flightsUrl = "https://www.google.com/travel/flights?q=" + encodeURIComponent(`vols ${f.origin} ${r.city} ${f.departureDate || ""}`);
+  const hotelUrl   = "https://www.booking.com/searchresults.html?ss=" + encodeURIComponent(`${r.hotel}, ${r.city}`);
+
+  return `
+  <article class="deal${i === 0 ? " deal--best" : ""}">
+    <div class="deal__top">
+      <div>
+        <div class="deal__rank">
+          ${medal ? `<span class="medal" aria-hidden="true">${medal}</span>` : ""}
+          <span class="deal__dest">${esc(r.city)}</span>
+          ${r.schengen ? `<span class="badge badge--eu">🇪🇺 Schengen</span>` : ""}
+        </div>
+        <div class="deal__sub">${esc(r.country)} · ${esc(dates || `${r.nights} nuits`)} · <span class="badge ${r.flightReel ? "badge--ok" : "badge--demo"}">${r.flightReel ? "vol réel" : "vol démo"}</span>
+          <span class="badge ${r.hotelReel ? "badge--ok" : "badge--demo"}">${r.hotelReel ? "hôtel réel" : "hôtel démo"}</span></div>
+      </div>
+      <div class="deal__price">
+        <div class="deal__total num">${eur(r.total)}</div>
+        <div class="deal__per num">≈ ${eur(per)} / pers.</div>
+      </div>
+    </div>
+
+    <div class="specs">
+      <div class="spec"><span aria-hidden="true">✈️</span><span class="spec__k">Vol</span>
+        <span class="spec__v">${esc(r.compagnieReelle || r.airline)}<small>${esc(horaireVol(r))}</small></span></div>
+      <div class="spec"><span aria-hidden="true">🏨</span><span class="spec__k">Hôtel</span>
+        <span class="spec__v">${esc(r.hotelNom || (r.hotelReel ? "Établissement non communiqué" : r.hotel))}<small>${esc(detailHotel(r))}</small></span></div>
+      <div class="spec"><span aria-hidden="true">🏖️</span><span class="spec__k">Plage</span>
+        <span class="spec__v num">${r.beachKm < 1 ? Math.round(r.beachKm * 1000) + " m" : r.beachKm + " km"}</span></div>
+      <div class="spec"><span aria-hidden="true">🚕</span><span class="spec__k">Transfert</span>
+        <span class="spec__v num">${r.transferMin} min</span></div>
+    </div>
+
+    <div class="bar" role="img" aria-label="Répartition : vol ${pct(r.priceFlight)}, hôtel ${pct(r.priceHotel)}, transfert ${pct(r.priceExtra)}">
+      <i class="bar__flight" style="width:${pct(r.priceFlight)}"></i>
+      <i class="bar__hotel"  style="width:${pct(r.priceHotel)}"></i>
+      <i class="bar__extra"  style="width:${pct(r.priceExtra)}"></i>
+    </div>
+    <div class="legend">
+      <span class="num"><i class="bar__flight"></i>Vol ${eur(r.priceFlight)}</span>
+      <span class="num"><i class="bar__hotel"></i>Hôtel ${eur(r.priceHotel)}</span>
+      <span class="num"><i class="bar__extra"></i>Transfert ${eur(r.priceExtra)}</span>
+    </div>
+
+    <div class="deal__cta">
+      <a class="btn btn--ghost" href="${esc(flightsUrl)}" target="_blank" rel="noopener noreferrer">✈️ Voir les vols</a>
+      <a class="btn btn--primary" href="${esc(hotelUrl)}" target="_blank" rel="noopener noreferrer">🏨 Voir l'hôtel</a>
+    </div>
+  </article>`;
+}
+
+function viewActionBar() {
+  if (state.view === "results") {
+    return `<div class="actionbar__in">
+      <button class="btn btn--ghost" onclick="goBack()">← Modifier</button>
+      <button class="btn btn--hunt" onclick="hunt()"${state.loading ? " disabled" : ""}>🔁 Relancer la chasse</button>
+    </div>`;
+  }
+  // Icônes à gauche, bouton principal à droite.
+  return `<div class="actionbar__in">
+    <button class="btn btn--ghost" onclick="saveSearch()" title="Sauvegarder">💾<span class="sr-only"> Sauvegarder</span></button>
+    <button class="btn btn--ghost" onclick="openSaved()" title="Mes recherches">📂<span class="sr-only"> Mes recherches</span></button>
+    <button class="btn btn--hunt" onclick="hunt()"${state.loading ? " disabled" : ""}>🔥 Chasser<span class="wide-only"> le meilleur voyage</span></button>
+  </div>`;
+}
+
+/* ==================== RENDER ==================== */
+const app = document.getElementById("app");
+const actionbar = document.getElementById("actionbar");
+
+function render() {
+  // Le re-render remplace tout le DOM : on restaure le focus et le curseur,
+  // sinon toute saisie est interrompue dès qu'un champ déclenche un rendu.
+  const active = document.activeElement;
+  const focusId = active && active.id ? active.id : null;
+  let caret = null;
+  try { caret = active && "selectionStart" in active ? active.selectionStart : null; } catch { caret = null; }
+
+  app.innerHTML = state.view === "form" ? viewForm() : viewResults();
+  actionbar.innerHTML = viewActionBar();
+  attach();
+
+  if (focusId) {
+    const el = document.getElementById(focusId);
+    if (el) {
+      el.focus({ preventScroll: true });
+      if (caret != null) { try { el.setSelectionRange(caret, caret); } catch {} }
+    }
+  }
+}
+
+function attach() {
+  const f = state.formData;
+  const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
+
+  /* --- entiers : toujours coercés, sinon les comparaisons `=== 4` des <select> cassent --- */
+  [["adults", 1, 9], ["children", 0, 6], ["babies", 0, 4]].forEach(([id, lo, hi]) => {
+    on(id, "change", e => { f[id] = clamp(int(e.target.value, DEFAULTS[id]), lo, hi); syncAges(f); render(); });
+  });
+  document.querySelectorAll("[data-step]").forEach(b => b.addEventListener("click", () => {
+    const id = b.dataset.step, lo = +document.getElementById(id).min, hi = +document.getElementById(id).max;
+    f[id] = clamp(f[id] + int(b.dataset.delta), lo, hi); syncAges(f); render();
+  }));
+  document.querySelectorAll("[data-age]").forEach(inp => inp.addEventListener("change", e => {
+    const arr = e.target.dataset.age === "child" ? f.childrenAges : f.babiesAges;
+    const lo = e.target.dataset.age === "child" ? 2 : 0, hi = e.target.dataset.age === "child" ? 17 : 23;
+    arr[int(e.target.dataset.idx)] = clamp(int(e.target.value, lo), lo, hi);
+    e.target.value = arr[int(e.target.dataset.idx)];
+  }));
+
+  on("departureDate", "change", e => {
+    f.departureDate = e.target.value;
+    if (f.returnDate && f.returnDate <= f.departureDate) f.returnDate = addDays(f.departureDate, f.tripDuration);
+    render();
+  });
+  on("returnDate", "change", e => { f.returnDate = e.target.value; render(); });
+  on("tripDuration", "change", e => { f.tripDuration = int(e.target.value, DEFAULTS.tripDuration); render(); });
+  on("origin", "change", e => {
+    f.origin = AIRPORTS.some(a => a.code === e.target.value) ? e.target.value : DEFAULTS.origin;
+    state.live = null; state.liveStatus = null;  // les tarifs du précédent départ ne valent plus
+    render();
+  });
+  on("minStars", "change", e => { f.minStars = int(e.target.value, DEFAULTS.minStars); render(); });
+  on("pension", "change", e => { f.pension = Object.hasOwn(PENSIONS, e.target.value) ? e.target.value : DEFAULTS.pension; render(); });
+  on("schengenOnly", "change", e => { f.schengenOnly = e.target.checked; render(); });
+  on("familyHotel", "change", e => { f.familyHotel = e.target.checked; render(); });
+
+  /* sliders : retour visuel immédiat, rendu complet au relâchement */
+  const live = (id, outId, fmt, set) => {
+    const el = document.getElementById(id), out = document.getElementById(outId);
+    if (!el) return;
+    el.addEventListener("input", e => { set(e.target.value); if (out) out.textContent = fmt(e.target.value); });
+    el.addEventListener("change", render);
+  };
+  live("maxBudget", "budgetOut", v => eur(v), v => f.maxBudget = int(v, DEFAULTS.maxBudget));
+  live("maxTransfer", "transferOut", v => `${int(v)} min`, v => f.maxTransfer = int(v, DEFAULTS.maxTransfer));
+  live("minRating", "ratingOut", v => `${num(v).toFixed(1)}/10`, v => f.minRating = num(v, DEFAULTS.minRating));
+
+  document.querySelectorAll("[data-datemode]").forEach(b => b.addEventListener("click", () => {
+    f.flexibleDates = b.dataset.datemode === "flexible"; state.error = null; render();
+  }));
+  document.querySelectorAll("[data-month]").forEach(b => b.addEventListener("click", () => {
+    const m = int(b.dataset.month);
+    f.selectedMonths = f.selectedMonths.includes(m) ? f.selectedMonths.filter(x => x !== m) : [...f.selectedMonths, m].sort((a, c) => a - c);
+    render();
+  }));
+  /* l'onglet destination écrit enfin dans le state (il ne faisait que changer une classe CSS) */
+  document.querySelectorAll("[data-dest]").forEach(b => b.addEventListener("click", () => {
+    f.destinationType = b.dataset.dest; render();
+  }));
+  document.querySelectorAll("[data-destid]").forEach(b => b.addEventListener("click", () => {
+    const id = b.dataset.destid;
+    f.destinations = f.destinations.includes(id) ? f.destinations.filter(x => x !== id) : [...f.destinations, id];
+    render();
+  }));
+  document.querySelectorAll("[data-pref]").forEach(b => b.addEventListener("click", () => {
+    const p = b.dataset.pref;
+    f.preferences = f.preferences.includes(p) ? f.preferences.filter(x => x !== p) : [...f.preferences, p];
+    render();
+  }));
+  document.querySelectorAll("[data-sort]").forEach(b => b.addEventListener("click", () => {
+    state.sort = b.dataset.sort; render();
+  }));
+}
+
+/* ==================== BACKEND ==================== */
+/**
+ * Interroge la fonction serveur qui détient le jeton Duffel.
+ * Ne lève jamais : toute panne se traduit par un repli sur les tarifs modélisés,
+ * la recherche doit rester utilisable même API éteinte.
+ */
+/**
+ * Dates réellement envoyées aux API. En mode flexible on dérive le 15 du premier
+ * mois coché : les deux fournisseurs exigent des dates précises, et vols et hôtels
+ * doivent porter exactement les mêmes.
+ */
+function datesEffectives(f) {
+  if (!f.flexibleDates) return { depart: f.departureDate, retour: f.returnDate };
+  if (!f.selectedMonths.length) return { depart: null, retour: null };
+  const mois = f.selectedMonths[0];
+  const annee = new Date().getMonth() + 1 >= mois ? new Date().getFullYear() + 1 : new Date().getFullYear();
+  const depart = `${annee}-${String(mois).padStart(2, "0")}-15`;
+  return { depart, retour: addDays(depart, f.tripDuration) };
+}
+
+async function fetchLiveFlights(f) {
+  const { depart, retour } = datesEffectives(f);
+  if (!depart) return { statut: "erreur", live: null };
+
+  const candidats = DEALS
+    .filter(d => f.destinationType !== "specific" || !f.destinations.length || f.destinations.includes(d.id))
+    .map(d => d.id).slice(0, 12);   // plafond imposé par la fonction
+
+  const q = new URLSearchParams({
+    origin: f.origin,
+    destinations: candidats.join(","),
+    depart_date: depart,
+    adults: String(f.adults)
+  });
+  // Duffel tarife d'après les âges réels, pas des compteurs : les champs d'âge du
+  // formulaire servent enfin à quelque chose.
+  if (f.childrenAges.length) q.set("children_ages", f.childrenAges.join(","));
+  if (f.babiesAges.length) q.set("infants_ages_months", f.babiesAges.join(","));
+  if (retour) q.set("return_date", retour);
+
+  try {
+    const res = await fetch(`/api/flights?${q}`, { signal: AbortSignal.timeout(30000) });
+    const data = await res.json();
+    if (data.configured === false) return { statut: "non-configure", live: null };
+    if (!res.ok || !Array.isArray(data.flights)) return { statut: "erreur", live: null };
+
+    // La devise est celle du compte Duffel, pas un paramètre d'appel. Un tarif qui
+    // n'est pas en euros ne peut pas s'additionner à un hôtel estimé en euros : on
+    // l'écarte plutôt que d'afficher un total faux.
+    const enEuros = data.flights.filter(v => v.currency === "EUR");
+    if (!enEuros.length && data.flights.length) return { statut: "devise", live: null, meta: data };
+
+    const live = new Map(enEuros.map(v => [v.destination, v]));
+    return { statut: live.size ? "reel" : "erreur", live, meta: data };
+  } catch {
+    return { statut: "erreur", live: null };
+  }
+}
+
+/**
+ * Interroge la fonction serveur qui détient la clé hôtelière.
+ * Ne lève jamais : toute panne retombe sur le tarif hôtel modélisé.
+ */
+async function fetchLiveStays(f, depart, retour) {
+  if (!depart || !retour) return { statut: "erreur", stays: null };
+  const candidats = DEALS
+    .filter(d => f.destinationType !== "specific" || !f.destinations.length || f.destinations.includes(d.id))
+    .filter(d => Number.isFinite(d.lat) && Number.isFinite(d.lon))
+    .slice(0, 12);
+
+  const q = new URLSearchParams({
+    lieux: candidats.map(d => `${d.id}:${d.lat},${d.lon}`).join(";"),
+    check_in: depart,
+    check_out: retour,
+    adults: String(f.adults),
+    pension: f.pension
+  });
+  if (f.childrenAges.length) q.set("children_ages", f.childrenAges.join(","));
+  if (f.babiesAges.length) q.set("infants_ages_months", f.babiesAges.join(","));
+
+  try {
+    const res = await fetch(`/api/stays?${q}`, { signal: AbortSignal.timeout(30000) });
+    const data = await res.json();
+    if (data.configured === false) return { statut: "non-configure", stays: null };
+    if (!res.ok || !Array.isArray(data.stays)) return { statut: "erreur", stays: null };
+
+    // Même règle que pour les vols : un tarif qui n'est pas en euros ne peut pas
+    // s'additionner au reste. On l'écarte plutôt que d'afficher un total faux.
+    const enEuros = data.stays.filter(v => v.currency === "EUR");
+    const stays = new Map(enEuros.map(v => [v.cle, v]));
+    return { statut: stays.size ? "reel" : "erreur", stays, meta: data };
+  } catch {
+    return { statut: "erreur", stays: null };
+  }
+}
+
+/* ==================== ACTIONS ==================== */
+async function hunt() {
+  const f = state.formData;
+  const err = validate(f);
+  if (err) {
+    state.error = err; state.view = "form"; render();
+    document.querySelector(".alert--err")?.scrollIntoView({ block: "center" });
+    return;
+  }
+  state.error = null;
+  state.view = "results";
+  state.loading = true;
+  render();
+  window.scrollTo({ top: 0 });
+
+  // Les deux appels durent ~15 s chacun : en série ce serait 30 s, en parallèle 15.
+  const dates = datesEffectives(f);
+  const [vols, hotels] = await Promise.all([
+    fetchLiveFlights(f),
+    fetchLiveStays(f, dates.depart, dates.retour)
+  ]);
+  state.live = vols.live;
+  state.liveStatus = vols.statut;
+  state.liveMode = vols.meta && vols.meta.mode ? vols.meta.mode : null;
+  state.stays = hotels.stays;
+  state.staysStatus = hotels.statut;
+  state.staysFournisseur = hotels.meta && hotels.meta.fournisseur ? hotels.meta.fournisseur : null;
+
+  const { rows, rejected } = search(f, vols.live, hotels.stays);
+  state.results = rows;
+  state.lastReason = topReason(rejected);
+  state.loading = false;
+  render();
+}
+
+function goBack() { state.view = "form"; render(); window.scrollTo({ top: 0 }); }
+
+function readSaved() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("tdh.searches") || "{}");
+    return raw && typeof raw === "object" ? raw : {};
+  } catch { return {}; }
+}
+function writeSaved(obj) {
+  try { localStorage.setItem("tdh.searches", JSON.stringify(obj)); return true; }
+  catch { return false; }
+}
+
+function saveSearch() {
+  const name = prompt("Nom de la recherche :", "Vacances " + MONTHS[new Date().getMonth()]);
+  if (!name) return;
+  const all = readSaved();
+  all[name.slice(0, 60)] = { data: state.formData, date: new Date().toISOString() };
+  if (!writeSaved(all)) { alert("Impossible de sauvegarder (stockage indisponible)."); return; }
+  openSaved();
+}
+
+function openSaved() {
+  const all = readSaved();
+  const names = Object.keys(all);
+  const body = document.getElementById("savedBody");
+  body.innerHTML = names.length
+    ? names.map(n => `
+      <div class="saved">
+        <div class="saved__n">
+          <b>${esc(n)}</b>
+          <span>${esc(new Date(all[n]?.date || Date.now()).toLocaleDateString("fr-FR"))}</span>
+        </div>
+        <button class="btn btn--primary" data-load="${esc(n)}">Charger</button>
+        <button class="link-btn" data-del="${esc(n)}">Supprimer</button>
+      </div>`).join("")
+    : `<p class="hint" style="text-align:center;padding:1rem 0">Aucune recherche sauvegardée pour l'instant.</p>`;
+
+  body.querySelectorAll("[data-load]").forEach(b => b.addEventListener("click", () => {
+    // sanitizeForm : une sauvegarde corrompue ou hostile ne peut ni planter le rendu ni injecter de HTML
+    state.formData = sanitizeForm(readSaved()[b.dataset.load]?.data);
+    state.error = null;
+    document.getElementById("savedDlg").close();
+    state.view = "form"; render(); window.scrollTo({ top: 0 });
+  }));
+  body.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
+    const all2 = readSaved(); delete all2[b.dataset.del]; writeSaved(all2); openSaved();
+  }));
+
+  document.getElementById("savedDlg").showModal();
+}
+
+/* ==================== THEME ==================== */
+(function theme() {
+  let mode = null;
+  try { mode = localStorage.getItem("tdh.theme"); } catch {}
+  if (mode === "dark" || mode === "light") document.documentElement.dataset.theme = mode;
+  document.getElementById("themeBtn").addEventListener("click", () => {
+    const cur = document.documentElement.dataset.theme
+      || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const next = cur === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("tdh.theme", next); } catch {}
+  });
+})();
+
+const bar = document.getElementById("appbar");
+addEventListener("scroll", () => bar.classList.toggle("is-stuck", scrollY > 8), { passive: true });
+
+/* ==================== SELF-CHECK (?selftest=1) ==================== */
+function selfCheck() {
+  const out = [];
+  const ok = (name, cond) => out.push((cond ? "PASS " : "FAIL ") + name);
+  try { corpsDesTests(ok, out); }
+  catch (e) {
+    // Une exception dans une assertion faisait taire TOUT l'auto-test : elle
+    // devient un échec visible, et les assertions déjà passées sont conservées.
+    out.push("FAIL exception pendant les tests : " + (e && e.message ? e.message : e));
+  }
+
+  const failed = out.filter(l => l.startsWith("FAIL"));
+  console.log(out.join("\n"));
+  console.log(failed.length ? `❌ ${failed.length}/${out.length} échecs` : `✅ ${out.length}/${out.length} OK`);
+  return { total: out.length, failed: failed.length, lines: out };
+}
+
+function corpsDesTests(ok, out) {
+  const base = sanitizeForm({ adults: 2, children: 0, babies: 0, pension: "petit-dej", maxBudget: 99999, minStars: 3, minRating: 0, maxTransfer: 240, familyHotel: false });
+
+  const d = DEALS.find(x => x.id === "LIS");
+  const p = priceDeal(d, base, 7);
+  ok("vol = base × 2 adultes", p.priceFlight === d.flightBase * 2);
+  ok("hôtel = tarif × nuits × 1 chambre", p.priceHotel === d.hotelRate * 7);
+  ok("total = vol + hôtel + transfert", p.total === p.priceFlight + p.priceHotel + p.priceExtra);
+
+  const ai = priceDeal(d, { ...base, pension: "all-inclusive" }, 7);
+  ok("all-inclusive coûte plus cher que petit-déj", ai.priceHotel > p.priceHotel);
+
+  const big = priceDeal(d, { ...base, adults: 4, children: 2 }, 7);
+  ok("6 personnes = 2 chambres", big.rooms === 2);
+
+  // La page et netlify/functions/stays.mjs doivent compter les chambres à l'identique :
+  // le tarif hôtelier réel est multiplié côté fonction et affiché ici. Une divergence
+  // afficherait un nombre de chambres qui ne correspond pas au prix.
+  ok("jamais plus de chambres que d'adultes",
+     priceDeal(d, { ...base, adults: 1, children: 3 }, 7).rooms === 1 &&
+     priceDeal(d, { ...base, adults: 1, children: 8 }, 7).rooms === 1 &&
+     priceDeal(d, { ...base, adults: 2, children: 5 }, 7).rooms === 2);
+  ok("le calcul par couchages est inchangé quand les adultes suffisent",
+     priceDeal(d, { ...base, adults: 9, children: 0 }, 7).rooms === 3 &&
+     priceDeal(d, { ...base, adults: 2, children: 0 }, 7).rooms === 1);
+  ok("plus de voyageurs = plus cher", big.total > p.total);
+
+  ok("14 nuits coûtent plus que 7", priceDeal(d, base, 14).total > p.total);
+
+  const budget = search({ ...base, maxBudget: 1200 });
+  ok("filtre budget appliqué", budget.rows.every(r => r.total <= 1200));
+  const stars = search({ ...base, minStars: 5 });
+  ok("filtre étoiles appliqué", stars.rows.every(r => r.stars >= 5) && stars.rows.length > 0);
+  const schengen = search({ ...base, schengenOnly: true });
+  ok("filtre Schengen appliqué", schengen.rows.every(r => r.schengen));
+  const transfer = search({ ...base, maxTransfer: 25 });
+  ok("filtre transfert appliqué", transfer.rows.every(r => r.transferMin <= 25));
+
+  ok("mode flexible validé sans dates", validate({ ...base, flexibleDates: true, selectedMonths: [5], tripDuration: 7 }) === null);
+  ok("mode flexible refusé sans mois", validate({ ...base, flexibleDates: true, selectedMonths: [], tripDuration: 7 }) !== null);
+  ok("retour avant départ refusé", validate({ ...base, flexibleDates: false, departureDate: "2099-06-10", returnDate: "2099-06-02" }) !== null);
+  ok("dates valides acceptées", validate({ ...base, flexibleDates: false, departureDate: "2099-06-02", returnDate: "2099-06-10" }) === null);
+
+  ok("HTML échappé", esc('"><img src=x onerror=alert(1)>') === "&quot;&gt;&lt;img src=x onerror=alert(1)&gt;");
+  const hostile = sanitizeForm({ preferences: "pas-un-tableau", pension: "__proto__", minStars: "cinq", childrenAges: null, children: 2 });
+  ok("sauvegarde hostile neutralisée", Array.isArray(hostile.preferences) && hostile.pension === DEFAULTS.pension && hostile.minStars === DEFAULTS.minStars);
+  ok("âges synchronisés sur le nombre d'enfants", hostile.childrenAges.length === hostile.children);
+
+  // Tarifs réels : ils doivent remplacer le tarif modélisé, et seulement là où ils existent.
+  const sansLive = priceDeal(d, base, 7, null);
+  const avecLive = priceDeal(d, base, 7, { total: 999, airline: "XX" });
+  ok("sans tarif réel, on garde le modèle", sansLive.priceFlight === d.flightBase * 2 && sansLive.flightReel === false);
+  ok("le total Amadeus n'est PAS remultiplié", avecLive.priceFlight === 999 && avecLive.flightReel === true);
+  ok("un tarif réel invalide ne casse pas le calcul",
+     priceDeal(d, base, 7, { total: 0 }).priceFlight === d.flightBase * 2 &&
+     priceDeal(d, base, 7, { total: "abc" }).priceFlight === d.flightBase * 2);
+  const carte = search({ ...base, maxBudget: 99999 }, new Map([["LIS", { total: 150, airline: "TP" }]]))
+                  .rows.find(x => x.id === "LIS");
+  ok("le tarif réel n'est appliqué qu'à sa destination", carte && carte.flightReel === true &&
+     search({ ...base, maxBudget: 99999 }, new Map()).rows.find(x => x.id === "LIS").flightReel === false);
+  ok("tous les identifiants de séjour sont des codes IATA", DEALS.every(x => /^[A-Z]{3}$/.test(x.id)));
+  ok("l'aéroport de départ est validé", sanitizeForm({ origin: "ZZZZ" }).origin === DEFAULTS.origin &&
+     sanitizeForm({ origin: "LYS" }).origin === "LYS");
+
+  // Tarif hôtelier réel : il couvre le séjour entier et toutes les chambres, donc
+  // ni multiplication par les nuits, ni par les chambres, ni coefficient de pension.
+  const sej = { total: 1200, nom: "Riad Réel", etoiles: 5, note: 9.2, pensionNom: "Half Board", publicAmount: 1400 };
+  const avecHotel = priceDeal(d, base, 7, null, sej);
+  const sansHotel = priceDeal(d, base, 7, null, null);
+  ok("le tarif hôtelier réel remplace le modèle", avecHotel.priceHotel === 1200 && avecHotel.hotelReel === true);
+  ok("le tarif hôtelier réel n'est pas remultiplié",
+     priceDeal(d, { ...base, pension: "all-inclusive" }, 14, null, sej).priceHotel === 1200);
+  ok("sans tarif hôtelier, le modèle s'applique",
+     sansHotel.hotelReel === false && sansHotel.priceHotel === d.hotelRate * 7);
+  ok("un tarif hôtelier invalide ne casse pas le calcul",
+     priceDeal(d, base, 7, null, { total: 0 }).priceHotel === d.hotelRate * 7 &&
+     priceDeal(d, base, 7, null, { total: "abc" }).priceHotel === d.hotelRate * 7);
+  ok("l'établissement réel est affiché avec un tarif réel",
+     avecHotel.hotelNom === "Riad Réel" && detailHotel({ ...d, ...avecHotel }) === "★★★★★ · 9.2/10 · Half Board");
+  ok("sans tarif réel, on retombe sur l'hôtel de démonstration",
+     avecHotel.hotelNom !== null && sansHotel.hotelNom === null &&
+     detailHotel({ ...d, ...sansHotel }) === `${"★".repeat(d.stars)} · ${d.rating}/10 · 1 chambre`);
+  // Tarif réel mais fiche établissement absente d'amont : le badge « hôtel réel » ne doit
+  // surmonter NI le nom, NI les étoiles, NI la note du jeu de démonstration.
+  const anonyme = priceDeal(d, base, 7, null, { total: 900 });
+  const detailAnonyme = detailHotel({ ...d, ...anonyme });
+  ok("tarif réel sans fiche hôtel : aucune donnée de démonstration sous le badge réel",
+     anonyme.hotelReel === true && anonyme.hotelNom === null &&
+     !detailAnonyme.includes("★") && !detailAnonyme.includes(`${d.rating}/10`) &&
+     (anonyme.hotelNom || (anonyme.hotelReel ? "Établissement non communiqué" : d.hotel)) !== d.hotel);
+
+  ok("vol et hôtel sont certifiés séparément",
+     priceDeal(d, base, 7, { total: 500 }, null).flightReel === true &&
+     priceDeal(d, base, 7, { total: 500 }, null).hotelReel === false);
+
+  // Un badge « vol réel » ne doit jamais surmonter des horaires de démonstration.
+  const offreLive = { total: 500, airline: "Transavia France", departureAt: "2026-11-05T16:20:00",
+                      returnAt: "2026-11-13T18:30:00", transfers: 0 };
+  const cLive = priceDeal(d, base, 7, offreLive);
+  ok("compagnie réelle affichée avec un tarif réel", cLive.compagnieReelle === "Transavia France");
+  ok("horaires réels affichés avec un tarif réel",
+     horaireVol({ ...d, ...cLive }) === "départ 16:20 · retour 18:30 · direct");
+  const cDemo = priceDeal(d, base, 7, null);
+  ok("sans tarif réel, on retombe sur les horaires de démonstration",
+     cDemo.compagnieReelle === null && horaireVol({ ...d, ...cDemo }) === d.times);
+  ok("un tarif réel sans horaire ne casse pas l'affichage",
+     horaireVol({ ...d, ...priceDeal(d, base, 7, { total: 500, airline: "X" }) }) === d.times);
+
+  // Les clés de prix ne doivent jamais écraser les champs du séjour lors de la fusion
+  // (une clé `hotel` numérique avait remplacé le nom de l'hôtel sur les cartes).
+  const merged = search({ ...base, maxBudget: 99999 }).rows.find(r => r.id === "LIS");
+  ok("le nom d'hôtel survit à la fusion", merged && merged.hotel === d.hotel);
+  ok("les montants restent numériques", merged && [merged.priceFlight, merged.priceHotel, merged.priceExtra, merged.total].every(Number.isFinite));
+}
+window.selfCheck = selfCheck;
+
+/* ==================== BOOT ==================== */
+state.formData.departureDate = addDays(today(), 45);
+state.formData.returnDate = addDays(state.formData.departureDate, state.formData.tripDuration);
+render();
+
+if (new URLSearchParams(location.search).has("selftest")) {
+  const r = selfCheck();
+  document.body.insertAdjacentHTML("afterbegin",
+    `<pre style="position:fixed;inset:auto 8px 8px auto;z-index:99;max-height:70vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:12px;box-shadow:var(--shadow-3)">${esc(r.lines.join("\n"))}\n\n${r.failed ? "❌ " + r.failed + " échec(s)" : "✅ " + r.total + "/" + r.total + " OK"}</pre>`);
+}
+
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>

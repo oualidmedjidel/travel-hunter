@@ -1,0 +1,15 @@
+{
+  "name": "travel-deal-hunter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Comparateur vol + hôtel + transfert. Aucune dépendance : tout est natif Node.",
+  "type": "module",
+  "main": "serveur.mjs",
+  "scripts": {
+    "start": "node serveur.mjs",
+    "test": "node tests/flights.test.mjs && node tests/serveur.test.mjs"
+  },
+  "engines": {
+    "node": ">=20.6"
+  }
+}
