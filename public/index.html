@@ -941,6 +941,31 @@ function viewResults() {
  * contredisait le bandeau juste au-dessus, et sa formule était fausse — un tarif réel est
  * pris tel quel, jamais multiplié par les voyageurs.
  */
+/**
+ * Lien Google Flights préremplí.
+ *
+ * L'ancienne version envoyait `vols PAR Faro 2026-11-05` : du français, un NOM DE VILLE,
+ * et pas de date de retour. Google Flights n'analyse `?q=` qu'en anglais — il retombait
+ * donc sur un formulaire vide, à ressaisir à la main. Les codes IATA lèvent en prime
+ * l'ambiguïté des noms de ville (Faro au Portugal, mais aussi au Brésil).
+ */
+function lienVols(origine, iata, depart, retour) {
+  const q = depart
+    ? `Flights to ${iata} from ${origine} on ${depart}${retour ? ` through ${retour}` : ""}`
+    : `Flights to ${iata} from ${origine}`;
+  return "https://www.google.com/travel/flights?q=" + encodeURIComponent(q);
+}
+
+/**
+ * Lien Booking. Quand le tarif est réel mais que l'amont n'a pas donné le nom de
+ * l'établissement, on cherche la ville — pas l'hôtel de démonstration, qui enverrait
+ * sur un AUTRE hôtel que celui dont le prix est affiché.
+ */
+function lienHotel(nom, ville) {
+  const q = nom ? `${nom}, ${ville}` : `hôtels ${ville}`;
+  return "https://www.booking.com/searchresults.html?ss=" + encodeURIComponent(q);
+}
+
 function noteComposition(volReel, hotelReel, nuits) {
   const vol = volReel
     ? "vol au tarif réel, tous voyageurs compris"
@@ -985,8 +1010,8 @@ function dealCard(r, i, f) {
   const per = Math.round(r.total / Math.max(1, pax));
   const pct = v => (v / r.total * 100).toFixed(1) + "%";
   const dates = f.flexibleDates ? "" : `${f.departureDate.slice(8)}/${f.departureDate.slice(5, 7)} → ${f.returnDate.slice(8)}/${f.returnDate.slice(5, 7)}`;
-  const flightsUrl = "https://www.google.com/travel/flights?q=" + encodeURIComponent(`vols ${f.origin} ${r.city} ${f.departureDate || ""}`);
-  const hotelUrl   = "https://www.booking.com/searchresults.html?ss=" + encodeURIComponent(`${r.hotel}, ${r.city}`);
+  const flightsUrl = lienVols(f.origin, r.id, f.flexibleDates ? "" : f.departureDate, f.flexibleDates ? "" : f.returnDate);
+  const hotelUrl   = lienHotel(r.hotelNom || (r.hotelReel ? "" : r.hotel), r.city);
 
   return `
   <article class="deal${i === 0 ? " deal--best" : ""}">
@@ -1456,6 +1481,21 @@ function corpsDesTests(ok, out) {
      anonyme.hotelReel === true && anonyme.hotelNom === null &&
      !detailAnonyme.includes("★") && !detailAnonyme.includes(`${d.rating}/10`) &&
      (anonyme.hotelNom || (anonyme.hotelReel ? "Établissement non communiqué" : d.hotel)) !== d.hotel);
+
+  // Les liens de réservation doivent viser ce que la carte AFFICHE.
+  const lv = lienVols("PAR", "FAO", "2026-11-05", "2026-11-13");
+  ok("lien vols : anglais, IATA, aller ET retour",
+     decodeURIComponent(lv.split("?q=")[1]) === "Flights to FAO from PAR on 2026-11-05 through 2026-11-13");
+  ok("lien vols : jamais de français, jamais de nom de ville",
+     !/vols |Faro|Marrakech/.test(decodeURIComponent(lv)));
+  ok("lien vols : dates flexibles, route seule",
+     decodeURIComponent(lienVols("PAR", "RAK", "", "").split("?q=")[1]) === "Flights to RAK from PAR");
+  ok("lien vols : aller simple accepté",
+     decodeURIComponent(lienVols("PAR", "RAK", "2026-11-05", "").split("?q=")[1]) === "Flights to RAK from PAR on 2026-11-05");
+  ok("lien hôtel : l'établissement nommé quand on le connaît",
+     decodeURIComponent(lienHotel("Vila Galé", "Faro").split("?ss=")[1]) === "Vila Galé, Faro");
+  ok("lien hôtel : la ville seule plutôt qu'un AUTRE hôtel",
+     decodeURIComponent(lienHotel("", "Faro").split("?ss=")[1]) === "hôtels Faro");
 
   // La note de bas de page ne doit jamais annoncer « démonstration » sur un tarif réel,
   // ni promettre « réel » sur un composant modélisé.
