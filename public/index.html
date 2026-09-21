@@ -937,7 +937,11 @@ function viewResults() {
   }[state.staysStatus] || "";
 
   const bandeau = {
-    "reel": `<div class="alert alert--info"><span>📡</span><div><b>Tarifs de vol réels</b> — remontés par Duffel au départ de ${esc(f.origin)}${state.liveMode === "test" ? ", en <b>mode bac à sable</b> : horaires et prix fictifs" : ""}. ${esc(etatHotels)} Le transfert reste estimé.</div></div>`,
+    // Le titre lui-même doit dire la vérité : « Tarifs de vol réels » suivi de
+    // « prix fictifs » se lisait comme une promesse corrigée en petit.
+    "reel": state.liveMode === "test"
+      ? `<div class="alert alert--warn"><span>🧪</span><div><b>Tarifs de test</b> — Duffel répond en <b>bac à sable</b> au départ de ${esc(f.origin)} : horaires et prix <b>fictifs</b>, non réservables. ${esc(etatHotels)} Le transfert reste estimé.</div></div>`
+      : `<div class="alert alert--info"><span>📡</span><div><b>Tarifs de vol réels</b> — remontés par Duffel au départ de ${esc(f.origin)}. ${esc(etatHotels)} Le transfert reste estimé.</div></div>`,
     "non-configure": `<div class="alert alert--warn"><span>⚙️</span><div><b>Données de démonstration</b> — la variable <code>DUFFEL_TOKEN</code> n'est pas définie côté serveur, aucun tarif réel n'est interrogé.</div></div>`,
     "erreur": `<div class="alert alert--warn"><span>⚠️</span><div><b>Repli sur la démonstration</b> — l'API de vols n'a rien renvoyé d'exploitable pour ce départ. Les prix affichés sont modélisés.</div></div>`,
     "devise": `<div class="alert alert--warn"><span>💱</span><div><b>Devise incompatible</b> — ton compte Duffel facture dans une autre devise que l'euro. Les tarifs réels ont été écartés plutôt que d'être additionnés à tort à des prix d'hôtel en euros. Règle la devise du compte sur EUR.</div></div>`
