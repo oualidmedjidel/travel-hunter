@@ -363,6 +363,29 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 24px; cur
 .sk { background: linear-gradient(90deg, var(--surface-2) 25%, var(--bg-tint) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: sk 1.3s infinite linear; border-radius: 6px; }
 @keyframes sk { to { background-position: -200% 0; } }
 
+/* Sources interrogées, affichées pendant la chasse. */
+.srcs { display: grid; gap: .55rem; margin: 1.25rem 0 1.5rem; }
+.src { display: flex; align-items: center; gap: .8rem; padding: .7rem .9rem;
+       background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
+.src__mono { width: 34px; height: 34px; border-radius: 10px; flex: 0 0 auto;
+             display: grid; place-items: center; color: #fff; font-weight: 700; font-size: .95rem; }
+.src__txt { flex: 1 1 auto; min-width: 0; line-height: 1.25; }
+.src__nom { font-weight: 600; font-size: .92rem; }
+.src__couvre { color: var(--muted); font-size: .78rem; }
+.src__etat { font-size: .78rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.src--attente .src__etat { color: var(--faint); }
+.src--encours .src__etat { color: var(--primary-ink); }
+.src--ok      .src__etat { color: var(--success); font-weight: 600; }
+.src--vide    .src__etat,
+.src--absent  .src__etat { color: var(--muted); }
+.src--attente .src__mono { opacity: .4; }
+.src--encours .src__mono { animation: srcPulse 1.1s ease-in-out infinite; }
+@keyframes srcPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(.9); } }
+@media (prefers-reduced-motion: reduce) {
+  .src--encours .src__mono { animation: none; }
+  .sk { animation: none; }
+}
+
 .empty { text-align: center; padding: 3rem 1rem; }
 .empty__ico { font-size: 2.5rem; }
 .empty h3 { margin: .75rem 0 .35rem; font-size: 1.1rem; }
@@ -501,6 +524,8 @@ const state = {
   stays: null,         // Map code -> tarif hôtelier réel, ou null
   staysStatus: null,   // "reel" | "non-configure" | "erreur"
   staysFournisseur: null,   // "liteapi" | "duffel"
+  sources: {},         // id -> "attente" | "encours" | "ok" | "vide" | "absent"
+  sourcesN: {},        // id -> nombre de résultats réellement revenus
   results: [],
   formData: structuredClone(DEFAULTS)
 };
@@ -872,8 +897,22 @@ function viewResults() {
   const f = state.formData;
 
   if (state.loading) {
+    const listeSources = SOURCES.map(s => {
+      const etat = state.sources[s.id] || "attente";
+      const e = etiquetteSource(etat, state.sourcesN[s.id] || 0);
+      return `<div class="src ${e.classe}">
+        <span class="src__mono" style="background:${s.teinte}" aria-hidden="true">${s.initiale}</span>
+        <span class="src__txt">
+          <span class="src__nom">${esc(nomSource(s.id, state.staysFournisseur))}</span><br>
+          <span class="src__couvre">${esc(s.couvre)}</span>
+        </span>
+        <span class="src__etat">${esc(e.texte)}</span>
+      </div>`;
+    }).join("");
+
     return `<section class="hero"><h1>Chasse en cours…</h1>
-      <p>Comparaison vol + hôtel + transfert sur ${DEALS.length} séjours.</p></section>
+      <p>Comparaison vol + hôtel + transfert sur ${DEALS.length} séjours.</p>
+      <div class="srcs">${listeSources}</div></section>
       <div class="deals">${Array.from({ length: 3 }, () => `
         <div class="skeleton">
           <div class="sk" style="height:18px;width:55%"></div>
@@ -941,6 +980,47 @@ function viewResults() {
  * contredisait le bandeau juste au-dessus, et sa formule était fausse — un tarif réel est
  * pris tel quel, jamais multiplié par les voyageurs.
  */
+/**
+ * Les sources RÉELLEMENT interrogées pendant une chasse. Cette liste pilote
+ * l'animation de chargement : elle ne peut donc pas annoncer un fournisseur
+ * qu'on n'appelle pas. Ajouter un fournisseur = une entrée ici + son appel dans
+ * hunt(), et l'animation suit toute seule.
+ *
+ * Volontairement AUCUN logo tiers : un monogramme neutre. Afficher la marque
+ * d'un service qu'on n'interroge pas serait un mensonge ; afficher celle d'un
+ * service qu'on interroge suggérerait un partenariat qui n'existe pas.
+ */
+const SOURCES = [
+  { id: "vols",   couvre: "Vols",                 initiale: "D", teinte: "#5b5bd6" },
+  { id: "hotels", couvre: "Hébergements",         initiale: "H", teinte: "#12a594" },
+  { id: "modele", couvre: "Transfert et modèle",  initiale: "M", teinte: "#8a8f98" }
+];
+
+/** Nom affiché d'une source : il dépend du fournisseur réellement retenu. */
+function nomSource(id, fournisseur) {
+  if (id === "vols") return "Duffel Air";
+  if (id === "modele") return "Modèle local";
+  return { liteapi: "LiteAPI", duffel: "Duffel Stays" }[fournisseur] || "API hôtelière";
+}
+
+/** Libellé d'état d'une source. Jamais « résultats » quand rien n'est revenu. */
+function etiquetteSource(statut, n) {
+  return {
+    attente: { texte: "en attente",     classe: "src--attente" },
+    encours: { texte: "interrogation…", classe: "src--encours" },
+    ok:      { texte: `${n} résultat${n > 1 ? "s" : ""}`, classe: "src--ok" },
+    vide:    { texte: "aucune offre",   classe: "src--vide" },
+    absent:  { texte: "non configurée", classe: "src--absent" }
+  }[statut] || { texte: "—", classe: "src--attente" };
+}
+
+/** Traduit la réponse d'un proxy en état de source, sans jamais l'embellir. */
+function etatDepuisReponse(statut, n) {
+  if (statut === "non-configure") return "absent";
+  if (statut === "reel") return n > 0 ? "ok" : "vide";
+  return "vide";
+}
+
 /**
  * Lien Google Flights préremplí.
  *
@@ -1287,9 +1367,27 @@ async function hunt() {
 
   // Les deux appels durent ~15 s chacun : en série ce serait 30 s, en parallèle 15.
   const dates = datesEffectives(f);
+
+  // Chaque source passe à « interrogation… », puis rend compte dès QU'ELLE répond —
+  // sans attendre l'autre. L'état affiché est donc l'état réel, pas une mise en scène.
+  state.sources = { vols: "encours", hotels: "encours", modele: "ok" };
+  state.sourcesN = { modele: DEALS.length };
+  render();
+
   const [vols, hotels] = await Promise.all([
-    fetchLiveFlights(f),
-    fetchLiveStays(f, dates.depart, dates.retour)
+    fetchLiveFlights(f).then(r => {
+      state.sourcesN.vols = (r.live || []).length;
+      state.sources.vols = etatDepuisReponse(r.statut, state.sourcesN.vols);
+      if (state.loading) render();
+      return r;
+    }),
+    fetchLiveStays(f, dates.depart, dates.retour).then(r => {
+      state.sourcesN.hotels = (r.stays || []).length;
+      state.staysFournisseur = r.meta && r.meta.fournisseur ? r.meta.fournisseur : null;
+      state.sources.hotels = etatDepuisReponse(r.statut, state.sourcesN.hotels);
+      if (state.loading) render();
+      return r;
+    })
   ]);
   state.live = vols.live;
   state.liveStatus = vols.statut;
@@ -1481,6 +1579,26 @@ function corpsDesTests(ok, out) {
      anonyme.hotelReel === true && anonyme.hotelNom === null &&
      !detailAnonyme.includes("★") && !detailAnonyme.includes(`${d.rating}/10`) &&
      (anonyme.hotelNom || (anonyme.hotelReel ? "Établissement non communiqué" : d.hotel)) !== d.hotel);
+
+  // L'animation de chargement ne doit annoncer QUE des sources réellement interrogées.
+  ok("sources : aucune marque qu'on n'interroge pas",
+     !/skyscanner|kayak|expedia|booking|liligo|momondo|kiwi/i.test(JSON.stringify(SOURCES)));
+  ok("sources : une entrée par appel réel, ni plus ni moins",
+     SOURCES.length === 3 && SOURCES.map(s => s.id).join() === "vols,hotels,modele");
+  ok("nom de source : suit le fournisseur réellement retenu",
+     nomSource("hotels", "liteapi") === "LiteAPI" &&
+     nomSource("hotels", "duffel") === "Duffel Stays" &&
+     nomSource("hotels", null) === "API hôtelière" &&
+     nomSource("vols", null) === "Duffel Air");
+  ok("état de source : jamais « résultats » sur une réponse vide",
+     etatDepuisReponse("reel", 0) === "vide" &&
+     etatDepuisReponse("reel", 3) === "ok" &&
+     etatDepuisReponse("non-configure", 0) === "absent" &&
+     etatDepuisReponse("erreur", 0) === "vide");
+  ok("étiquette de source : singulier et pluriel",
+     etiquetteSource("ok", 1).texte === "1 résultat" &&
+     etiquetteSource("ok", 4).texte === "4 résultats" &&
+     etiquetteSource("absent", 0).texte === "non configurée");
 
   // Les liens de réservation doivent viser ce que la carte AFFICHE.
   const lv = lienVols("PAR", "FAO", "2026-11-05", "2026-11-13");
