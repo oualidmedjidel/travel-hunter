@@ -929,9 +929,26 @@ function viewResults() {
       <div class="sortbar">${sortBtn("price", "💶 Prix")}${sortBtn("score", "🎯 Pertinence")}${sortBtn("rating", "⭐ Note")}</div>
     </div>
     <div class="deals">${rows.map((r, i) => dealCard(r, i, f)).join("")}</div>
-    <p class="footnote">Prix de démonstration calculés localement (vol × voyageurs + ${r0()} nuits d'hôtel + transfert). Les liens ouvrent une vraie recherche chez le fournisseur.</p>`;
+    <p class="footnote">${noteComposition(state.liveStatus === "reel", state.staysStatus === "reel", r0())} Les liens ouvrent une vraie recherche chez le fournisseur.</p>`;
 
   function r0() { return rows[0].nights; }
+}
+
+/**
+ * Décrit la composition du total selon ce qui est RÉELLEMENT réel, composant par composant.
+ * La note précédente annonçait « Prix de démonstration calculés localement (vol × voyageurs
+ * + N nuits) » quelle que soit la situation : dès qu'un tarif Duffel arrivait, elle
+ * contredisait le bandeau juste au-dessus, et sa formule était fausse — un tarif réel est
+ * pris tel quel, jamais multiplié par les voyageurs.
+ */
+function noteComposition(volReel, hotelReel, nuits) {
+  const vol = volReel
+    ? "vol au tarif réel, tous voyageurs compris"
+    : "vol modélisé (tarif de base × voyageurs)";
+  const hotel = hotelReel
+    ? "hôtel au tarif réel, séjour entier"
+    : `hôtel modélisé (${nuits} nuit${nuits > 1 ? "s" : ""} × chambres × pension)`;
+  return `Composition du total : ${vol} + ${hotel} + transfert estimé.`;
 }
 
 /** Détail hôtel : données réelles quand le tarif l'est, sinon celles du jeu de démonstration. */
@@ -1439,6 +1456,19 @@ function corpsDesTests(ok, out) {
      anonyme.hotelReel === true && anonyme.hotelNom === null &&
      !detailAnonyme.includes("★") && !detailAnonyme.includes(`${d.rating}/10`) &&
      (anonyme.hotelNom || (anonyme.hotelReel ? "Établissement non communiqué" : d.hotel)) !== d.hotel);
+
+  // La note de bas de page ne doit jamais annoncer « démonstration » sur un tarif réel,
+  // ni promettre « réel » sur un composant modélisé.
+  ok("note de composition : vol réel, hôtel modélisé",
+     noteComposition(true, false, 8) === "Composition du total : vol au tarif réel, tous voyageurs compris + hôtel modélisé (8 nuits × chambres × pension) + transfert estimé.");
+  ok("note de composition : tout modélisé",
+     /vol modélisé/.test(noteComposition(false, false, 8)) && /hôtel modélisé/.test(noteComposition(false, false, 8)));
+  ok("note de composition : tout réel, plus aucun « modélisé »",
+     !/modélisé/.test(noteComposition(true, true, 8)));
+  ok("note de composition : jamais le mot démonstration",
+     [[0,0],[0,1],[1,0],[1,1]].every(([v, h]) => !/démonstration/i.test(noteComposition(!!v, !!h, 8))));
+  ok("note de composition : singulier à une nuit",
+     /1 nuit ×/.test(noteComposition(true, false, 1)));
 
   ok("vol et hôtel sont certifiés séparément",
      priceDeal(d, base, 7, { total: 500 }, null).flightReel === true &&
