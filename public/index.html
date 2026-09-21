@@ -340,6 +340,7 @@ input[type=range] { width: 100%; accent-color: var(--primary); height: 24px; cur
 .badge--demo { background: var(--surface-2); color: var(--faint); }
 .badge--ok   { background: var(--success-soft); color: var(--success); }
 .badge--eu   { background: var(--primary-soft); color: var(--primary-ink); }
+.badge--test { background: var(--accent-soft); color: var(--accent-ink); }
 
 .specs { display: grid; gap: .55rem; padding: .85rem 0; border-block: 1px solid var(--border); }
 .spec { display: grid; grid-template-columns: 22px 1fr auto; gap: .55rem; align-items: baseline; font-size: .87rem; }
@@ -968,7 +969,7 @@ function viewResults() {
       <div class="sortbar">${sortBtn("price", "💶 Prix")}${sortBtn("score", "🎯 Pertinence")}${sortBtn("rating", "⭐ Note")}</div>
     </div>
     <div class="deals">${rows.map((r, i) => dealCard(r, i, f)).join("")}</div>
-    <p class="footnote">${noteComposition(state.liveStatus === "reel", state.staysStatus === "reel", r0())} Les liens ouvrent une vraie recherche chez le fournisseur.</p>`;
+    <p class="footnote">${noteComposition(state.liveStatus === "reel", state.staysStatus === "reel", r0(), state.liveMode)} Les liens ouvrent une vraie recherche chez le fournisseur.</p>`;
 
   function r0() { return rows[0].nights; }
 }
@@ -995,6 +996,23 @@ const SOURCES = [
   { id: "hotels", couvre: "Hébergements",         initiale: "H", teinte: "#12a594" },
   { id: "modele", couvre: "Transfert et modèle",  initiale: "M", teinte: "#8a8f98" }
 ];
+
+/**
+ * Badge du composant vol. « Réel » est réservé à un tarif que le voyageur peut
+ * réellement payer.
+ *
+ * En bac à sable, Duffel renvoie des horaires et des prix INVENTÉS. Le badge
+ * disait pourtant « vol réel » en vert, au-dessus de chaque carte, pendant que
+ * le bandeau annonçait « prix fictifs » — et c'est le badge qu'on lit. Un
+ * comparateur qui publie des prix inventés sous une étiquette « réel » est
+ * trompeur, quelle que soit la petite ligne au-dessus.
+ */
+function badgeVol(reel, mode) {
+  if (!reel) return { texte: "vol démo", classe: "badge--demo" };
+  return mode === "test"
+    ? { texte: "vol test", classe: "badge--test" }
+    : { texte: "vol réel", classe: "badge--ok" };
+}
 
 /** Nom affiché d'une source : il dépend du fournisseur réellement retenu. */
 function nomSource(id, fournisseur) {
@@ -1046,9 +1064,11 @@ function lienHotel(nom, ville) {
   return "https://www.booking.com/searchresults.html?ss=" + encodeURIComponent(q);
 }
 
-function noteComposition(volReel, hotelReel, nuits) {
+function noteComposition(volReel, hotelReel, nuits, mode) {
   const vol = volReel
-    ? "vol au tarif réel, tous voyageurs compris"
+    ? (mode === "test"
+        ? "vol au tarif de test Duffel, non réservable"
+        : "vol au tarif réel, tous voyageurs compris")
     : "vol modélisé (tarif de base × voyageurs)";
   const hotel = hotelReel
     ? "hôtel au tarif réel, séjour entier"
@@ -1090,6 +1110,7 @@ function dealCard(r, i, f) {
   const per = Math.round(r.total / Math.max(1, pax));
   const pct = v => (v / r.total * 100).toFixed(1) + "%";
   const dates = f.flexibleDates ? "" : `${f.departureDate.slice(8)}/${f.departureDate.slice(5, 7)} → ${f.returnDate.slice(8)}/${f.returnDate.slice(5, 7)}`;
+  const bv = badgeVol(r.flightReel, state.liveMode);
   const flightsUrl = lienVols(f.origin, r.id, f.flexibleDates ? "" : f.departureDate, f.flexibleDates ? "" : f.returnDate);
   const hotelUrl   = lienHotel(r.hotelNom || (r.hotelReel ? "" : r.hotel), r.city);
 
@@ -1102,7 +1123,7 @@ function dealCard(r, i, f) {
           <span class="deal__dest">${esc(r.city)}</span>
           ${r.schengen ? `<span class="badge badge--eu">🇪🇺 Schengen</span>` : ""}
         </div>
-        <div class="deal__sub">${esc(r.country)} · ${esc(dates || `${r.nights} nuits`)} · <span class="badge ${r.flightReel ? "badge--ok" : "badge--demo"}">${r.flightReel ? "vol réel" : "vol démo"}</span>
+        <div class="deal__sub">${esc(r.country)} · ${esc(dates || `${r.nights} nuits`)} · <span class="badge ${bv.classe}">${esc(bv.texte)}</span>
           <span class="badge ${r.hotelReel ? "badge--ok" : "badge--demo"}">${r.hotelReel ? "hôtel réel" : "hôtel démo"}</span></div>
       </div>
       <div class="deal__price">
@@ -1579,6 +1600,20 @@ function corpsDesTests(ok, out) {
      anonyme.hotelReel === true && anonyme.hotelNom === null &&
      !detailAnonyme.includes("★") && !detailAnonyme.includes(`${d.rating}/10`) &&
      (anonyme.hotelNom || (anonyme.hotelReel ? "Établissement non communiqué" : d.hotel)) !== d.hotel);
+
+  // « Réel » est réservé à un tarif que le voyageur peut réellement payer.
+  // En bac à sable Duffel invente les prix : le badge ne doit jamais dire « réel ».
+  ok("badge vol : jamais « réel » en bac à sable",
+     badgeVol(true, "test").texte === "vol test" && badgeVol(true, "test").classe === "badge--test");
+  ok("badge vol : « réel » seulement en mode live",
+     badgeVol(true, "live").texte === "vol réel" && badgeVol(true, "live").classe === "badge--ok");
+  ok("badge vol : sans tarif amont, démo quel que soit le mode",
+     badgeVol(false, "test").texte === "vol démo" && badgeVol(false, "live").texte === "vol démo");
+  ok("badge vol : mode inconnu ne promet pas « test »",
+     badgeVol(true, null).texte === "vol réel");
+  ok("note de composition : le bac à sable est dit non réservable",
+     /non réservable/.test(noteComposition(true, false, 8, "test")) &&
+     !/tarif réel/.test(noteComposition(true, false, 8, "test")));
 
   // L'animation de chargement ne doit annoncer QUE des sources réellement interrogées.
   ok("sources : aucune marque qu'on n'interroge pas",
