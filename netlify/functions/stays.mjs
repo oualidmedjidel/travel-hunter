@@ -181,6 +181,19 @@ export function meilleurDuffel(payload, cle) {
   return best;
 }
 
+/**
+ * Bac à sable ou production, d'après le préfixe de la clé LiteAPI.
+ *
+ * Le tableau de bord Nuitee distribue une clé `sand_…` gratuitement et réserve la clé
+ * `prod_…` aux comptes ayant enregistré un moyen de paiement — relevé le 2026-09-22. La
+ * clé de bac à sable répond avec des données d'exemple : sans ce champ, la page
+ * afficherait « hôtel réel » au-dessus de prix inventés.
+ *
+ * Seul un `prod_` explicite vaut « live ». Une clé de forme inconnue est déclarée « test »,
+ * jamais l'inverse : un badge « réel » ne doit jamais surmonter une donnée douteuse.
+ */
+export const modeLite = cle => String(cle || "").trim().startsWith("prod_") ? "live" : "test";
+
 /** « CLE:lat,lon;… » → [{cle, lat, lon}]. Rejette tout ce qui n'est pas exploitable. */
 export function lireLieux(brut) {
   const out = [];
@@ -286,7 +299,9 @@ export default async (req) => {
   return json({
     configured: true,
     fournisseur,
-    mode: fournisseur === "duffel" ? (duffelToken.startsWith("duffel_test_") ? "test" : "live") : null,
+    mode: fournisseur === "duffel"
+      ? (duffelToken.startsWith("duffel_test_") ? "test" : "live")
+      : modeLite(cleLite),
     demandes: lieux.length,
     trouves: stays.length,
     abandonnes: abandonnees,

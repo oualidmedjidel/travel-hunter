@@ -535,6 +535,7 @@ const state = {
   stays: null,         // Map code -> tarif hôtelier réel, ou null
   staysStatus: null,   // "reel" | "non-configure" | "erreur"
   staysFournisseur: null,   // "liteapi" | "duffel"
+  staysMode: null,     // "test" (clé sand_ LiteAPI ou jeton duffel_test_) | "live"
   sources: {},         // id -> "attente" | "encours" | "ok" | "vide" | "absent"
   sourcesN: {},        // id -> nombre de résultats réellement revenus
   results: [],
@@ -954,7 +955,9 @@ function viewResults() {
     : `${f.departureDate} → ${f.returnDate}`;
 
   const etatHotels = {
-    "reel": `Tarifs hôteliers réels via ${esc(state.staysFournisseur === "liteapi" ? "LiteAPI" : "Duffel Stays")}.`,
+    "reel": state.staysMode === "test"
+      ? `Tarifs hôteliers de bac à sable via ${state.staysFournisseur === "liteapi" ? "LiteAPI" : "Duffel Stays"} : données d'exemple, non réservables.`
+      : `Tarifs hôteliers réels via ${state.staysFournisseur === "liteapi" ? "LiteAPI" : "Duffel Stays"}.`,
     "non-configure": "Hôtel estimé par le modèle local — aucune clé hôtelière configurée.",
     "erreur": "Hôtel estimé par le modèle local — l'API hôtelière n'a rien renvoyé d'exploitable."
   }[state.staysStatus] || "";
@@ -996,7 +999,7 @@ function viewResults() {
       <div class="sortbar">${sortBtn("price", "💶 Prix")}${sortBtn("score", "🎯 Pertinence")}${sortBtn("rating", "⭐ Note")}</div>
     </div>
     <div class="deals">${rows.map((r, i) => dealCard(r, i, f)).join("")}</div>
-    <p class="footnote">${noteComposition(state.liveStatus === "reel", state.staysStatus === "reel", r0(), state.liveMode)} Les liens ouvrent une vraie recherche chez le fournisseur.</p>`;
+    <p class="footnote">${noteComposition(state.liveStatus === "reel", state.staysStatus === "reel", r0(), state.liveMode, state.staysMode)} Les liens ouvrent une vraie recherche chez le fournisseur.</p>`;
 
   function r0() { return rows[0].nights; }
 }
@@ -1039,6 +1042,19 @@ function badgeVol(reel, mode) {
   return mode === "test"
     ? { texte: "vol test", classe: "badge--test" }
     : { texte: "vol réel", classe: "badge--ok" };
+}
+
+/**
+ * Badge du composant hôtel, même règle que le vol. LiteAPI distribue gratuitement une clé
+ * `sand_…` qui répond avec des données d'exemple : un tarif remonté n'est pas pour autant
+ * un tarif payable. `/api/stays` publie `mode`, la page le lit, et « réel » reste réservé
+ * à une clé de production.
+ */
+function badgeHotel(reel, mode) {
+  if (!reel) return { texte: "hôtel démo", classe: "badge--demo" };
+  return mode === "test"
+    ? { texte: "hôtel test", classe: "badge--test" }
+    : { texte: "hôtel réel", classe: "badge--ok" };
 }
 
 /** Nom affiché d'une source : il dépend du fournisseur réellement retenu. */
@@ -1112,14 +1128,16 @@ function lienHotel(nom, ville, f, rooms) {
   return url;
 }
 
-function noteComposition(volReel, hotelReel, nuits, mode) {
+function noteComposition(volReel, hotelReel, nuits, mode, modeHotel) {
   const vol = volReel
     ? (mode === "test"
         ? "vol au tarif de test Duffel, non réservable"
         : "vol au tarif réel, tous voyageurs compris")
     : "vol modélisé (tarif de base × voyageurs)";
   const hotel = hotelReel
-    ? "hôtel au tarif réel, séjour entier"
+    ? (modeHotel === "test"
+        ? "hôtel au tarif de bac à sable, non réservable"
+        : "hôtel au tarif réel, séjour entier")
     : `hôtel modélisé (${nuits} nuit${nuits > 1 ? "s" : ""} × chambres × pension)`;
   return `Composition du total : ${vol} + ${hotel} + transfert estimé.`;
 }
@@ -1159,6 +1177,7 @@ function dealCard(r, i, f) {
   const pct = v => (v / r.total * 100).toFixed(1) + "%";
   const dates = f.flexibleDates ? "" : `${f.departureDate.slice(8)}/${f.departureDate.slice(5, 7)} → ${f.returnDate.slice(8)}/${f.returnDate.slice(5, 7)}`;
   const bv = badgeVol(r.flightReel, state.liveMode);
+  const bh = badgeHotel(r.hotelReel, state.staysMode);
   const flightsUrl = lienVols(f.origin, r.id, f.flexibleDates ? "" : f.departureDate, f.flexibleDates ? "" : f.returnDate);
   const hotelUrl   = lienHotel(r.hotelNom || (r.hotelReel ? "" : r.hotel), r.city, f, r.rooms);
 
@@ -1172,7 +1191,7 @@ function dealCard(r, i, f) {
           ${r.schengen ? `<span class="badge badge--eu">🇪🇺 Schengen</span>` : ""}
         </div>
         <div class="deal__sub">${esc(r.country)} · ${esc(dates || `${r.nights} nuits`)} · <span class="badge ${bv.classe}">${esc(bv.texte)}</span>
-          <span class="badge ${r.hotelReel ? "badge--ok" : "badge--demo"}">${r.hotelReel ? "hôtel réel" : "hôtel démo"}</span></div>
+          <span class="badge ${bh.classe}">${esc(bh.texte)}</span></div>
       </div>
       <div class="deal__price">
         <div class="deal__total num">${eur(r.total)}</div>
@@ -1465,6 +1484,7 @@ async function hunt() {
   state.stays = hotels.stays;
   state.staysStatus = hotels.statut;
   state.staysFournisseur = hotels.meta && hotels.meta.fournisseur ? hotels.meta.fournisseur : null;
+  state.staysMode = hotels.meta && hotels.meta.mode ? hotels.meta.mode : null;
 
   const { rows, rejected } = search(f, vols.live, hotels.stays);
   state.results = rows;
@@ -1729,6 +1749,17 @@ function corpsDesTests(ok, out) {
      /vol modélisé/.test(noteComposition(false, false, 8)) && /hôtel modélisé/.test(noteComposition(false, false, 8)));
   ok("note de composition : tout réel, plus aucun « modélisé »",
      !/modélisé/.test(noteComposition(true, true, 8)));
+
+  // Une clé LiteAPI de bac à sable répond : le tarif existe, il n'est pas payable pour autant.
+  ok("badge hôtel : démo sans tarif remonté",
+     badgeHotel(false, null).texte === "hôtel démo" && badgeHotel(false, "live").texte === "hôtel démo");
+  ok("badge hôtel : « test » sur une clé de bac à sable",
+     badgeHotel(true, "test").texte === "hôtel test" && badgeHotel(true, "test").classe === "badge--test");
+  ok("badge hôtel : « réel » réservé à la production",
+     badgeHotel(true, "live").texte === "hôtel réel" && badgeHotel(true, "live").classe === "badge--ok");
+  ok("note de composition : un tarif de bac à sable ne se dit jamais réel",
+     /bac à sable/.test(noteComposition(true, true, 8, "live", "test"))
+     && !/hôtel au tarif réel/.test(noteComposition(true, true, 8, "live", "test")));
   ok("note de composition : jamais le mot démonstration",
      [[0,0],[0,1],[1,0],[1,1]].every(([v, h]) => !/démonstration/i.test(noteComposition(!!v, !!h, 8))));
   ok("note de composition : singulier à une nuit",
