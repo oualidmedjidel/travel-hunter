@@ -7,7 +7,7 @@
   "main": "serveur.mjs",
   "scripts": {
     "start": "node serveur.mjs",
-    "test": "node tests/flights.test.mjs && node tests/serveur.test.mjs"
+    "test": "node tests/flights.test.mjs && node tests/serveur.test.mjs && node tests/veille.test.mjs"
   },
   "engines": {
     "node": ">=20.6"

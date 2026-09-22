@@ -546,6 +546,8 @@ const state = {
   staysStatus: null,   // "reel" | "non-configure" | "erreur"
   staysFournisseur: null,   // "liteapi" | "duffel"
   staysMode: null,     // "test" (clé sand_ LiteAPI ou jeton duffel_test_) | "live"
+  veilles: null,       // résumés rendus par /api/veille, null tant qu'on n'a pas demandé
+  veilleMsg: null,     // retour de la dernière action de veille, affiché tel quel
   sources: {},         // id -> "attente" | "encours" | "ok" | "vide" | "absent"
   sourcesN: {},        // id -> nombre de résultats réellement revenus
   results: [],
@@ -1253,13 +1255,21 @@ function viewActionBar() {
   if (state.view === "results") {
     return `<div class="actionbar__in">
       <button class="btn btn--ghost" onclick="goBack()">← Modifier</button>
+      <button class="btn btn--ghost" onclick="surveiller()" title="Surveiller cette recherche">🔔<span class="wide-only"> Surveiller</span></button>
       <button class="btn btn--hunt" onclick="hunt()"${state.loading ? " disabled" : ""}>🔁 Relancer la chasse</button>
+    </div>`;
+  }
+  if (state.view === "veilles") {
+    return `<div class="actionbar__in">
+      <button class="btn btn--ghost" onclick="goBack()">← Retour</button>
+      <button class="btn btn--hunt" onclick="hunt()"${state.loading ? " disabled" : ""}>🔥 Chasser<span class="wide-only"> le meilleur voyage</span></button>
     </div>`;
   }
   // Icônes à gauche, bouton principal à droite.
   return `<div class="actionbar__in">
     <button class="btn btn--ghost" onclick="saveSearch()" title="Sauvegarder">💾<span class="sr-only"> Sauvegarder</span></button>
     <button class="btn btn--ghost" onclick="openSaved()" title="Mes recherches">📂<span class="sr-only"> Mes recherches</span></button>
+    <button class="btn btn--ghost" onclick="ouvrirVeilles()" title="Mes veilles">🔔<span class="sr-only"> Mes veilles</span></button>
     <button class="btn btn--hunt" onclick="hunt()"${state.loading ? " disabled" : ""}>🔥 Chasser<span class="wide-only"> le meilleur voyage</span></button>
   </div>`;
 }
@@ -1292,7 +1302,9 @@ function render() {
   let caret = null;
   try { caret = active && "selectionStart" in active ? active.selectionStart : null; } catch { caret = null; }
 
-  app.innerHTML = state.view === "form" ? viewForm() : viewResults();
+  app.innerHTML = state.view === "form" ? viewForm()
+    : state.view === "veilles" ? viewVeilles()
+    : viewResults();
   actionbar.innerHTML = viewActionBar();
   attach();
 
@@ -1372,6 +1384,7 @@ function attach() {
     f.selectedMonths = [int(b.dataset.month)];
     render();
   }));
+  document.querySelectorAll("[data-oublier]").forEach(b => b.addEventListener("click", () => oublierVeille(b.dataset.oublier)));
   /* l'onglet destination écrit enfin dans le state (il ne faisait que changer une classe CSS) */
   document.querySelectorAll("[data-dest]").forEach(b => b.addEventListener("click", () => {
     f.destinationType = b.dataset.dest; render();
@@ -1491,6 +1504,138 @@ async function fetchLiveStays(f, depart, retour) {
   } catch {
     return { statut: "erreur", stays: null };
   }
+}
+
+/* ==================== VEILLE ====================
+ * Surveiller une recherche dans le temps : c'est ce qui sépare un comparateur d'un
+ * « hunter ». Le serveur relève les prix toutes les 6 h et garde l'historique ; la page
+ * ne fait que créer, lister et supprimer.
+ *
+ * Aucun compte : un identifiant aléatoire dans le localStorage tient lieu de porte.
+ * Qui change de navigateur repart de zéro, et c'est dit dans l'écran.
+ */
+function proprietaire() {
+  try {
+    let id = localStorage.getItem("tdh.proprietaire");
+    if (!id || id.length < 12) {
+      id = "p" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+      localStorage.setItem("tdh.proprietaire", id);
+    }
+    return id;
+  } catch { return null; }   // navigation privée, stockage refusé : la veille est indisponible
+}
+
+/** Critères envoyés au serveur : exactement ce dont un relevé a besoin, rien de plus. */
+function criteresVeille(f, dates) {
+  const choisies = f.destinationType === "specific" && f.destinations.length
+    ? DEALS.filter(d => f.destinations.includes(d.id))
+    : DEALS;
+  const douze = choisies.slice(0, 12);
+  return {
+    origin: f.origin,
+    destinations: douze.map(d => d.id),
+    depart: dates.depart,
+    retour: dates.retour || "",
+    adults: f.adults,
+    childrenAges: f.childrenAges.slice(0, f.children),
+    lieux: douze.map(d => `${d.id}:${d.lat},${d.lon}`).join(";")
+  };
+}
+
+async function surveiller() {
+  const id = proprietaire();
+  if (!id) { state.veilleMsg = "Le stockage du navigateur est refusé : impossible de retenir une veille."; render(); return; }
+  const f = state.formData;
+  const dates = datesEffectives(f);
+  if (!dates.depart) { state.veilleMsg = "Choisis des dates avant de mettre sous surveillance."; render(); return; }
+
+  state.veilleMsg = "Enregistrement…"; render();
+  try {
+    const r = await fetch("/api/veille", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "ajouter", proprietaire: id,
+        nom: `${f.origin} · ${dates.depart}`, criteres: criteresVeille(f, dates) })
+    });
+    const d = await r.json();
+    state.veilleMsg = r.ok ? "Sous surveillance. Le premier relevé arrive dans l'heure."
+                           : `Refusé : ${d.error || r.status}`;
+    if (r.ok) await chargerVeilles();
+  } catch { state.veilleMsg = "Le serveur n'a pas répondu."; }
+  render();
+}
+
+async function chargerVeilles() {
+  const id = proprietaire();
+  if (!id) { state.veilles = []; return; }
+  try {
+    const r = await fetch(`/api/veille?proprietaire=${encodeURIComponent(id)}`);
+    const d = await r.json();
+    state.veilles = Array.isArray(d.veilles) ? d.veilles : [];
+  } catch { state.veilles = []; }
+}
+
+async function oublierVeille(veilleId) {
+  const id = proprietaire();
+  if (!id) return;
+  try {
+    await fetch("/api/veille", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "supprimer", proprietaire: id, id: veilleId })
+    });
+  } catch {}
+  await chargerVeilles();
+  render();
+}
+
+async function ouvrirVeilles() {
+  state.view = "veilles"; state.veilleMsg = null; render();
+  await chargerVeilles(); render();
+}
+
+/** « 12 % au-dessus du meilleur prix vu » — ou rien tant qu'un seul relevé existe. */
+function ecartTexte(d) {
+  if (d.actuel === null || d.meilleur === null) return "en attente du premier relevé";
+  if (d.releves < 2) return "premier relevé";
+  if (d.ecart === 0) return "au meilleur prix vu";
+  return d.ecart > 0 ? `${d.ecart} % au-dessus du meilleur vu` : `${Math.abs(d.ecart)} % sous le précédent`;
+}
+
+function viewVeilles() {
+  const v = state.veilles;
+  const entete = `
+    <section class="hero" style="padding-bottom:.5rem">
+      <span class="eyebrow">Veille</span>
+      <h1>Ce que je surveille</h1>
+      <p>Le serveur relève les prix toutes les 6 heures et garde l'historique. Les veilles
+         vivent dans ce navigateur : sur un autre appareil, tu ne les verras pas.</p>
+    </section>`;
+
+  if (v === null) return entete + `<p class="footnote">Chargement…</p>`;
+  if (!v.length) {
+    return entete + `<div class="alert alert--info"><span>🔭</span><div>Aucune veille pour
+      l'instant. Lance une chasse, puis « Surveiller cette recherche ».</div></div>`;
+  }
+
+  const cartes = v.map(x => {
+    const lignes = x.destinations.slice(0, 12).map(d => `
+      <div class="spec"><span class="spec__k">${esc(d.code)}</span>
+        <span class="spec__v num">${d.actuel === null ? "—" : eur(d.actuel)}
+          <small>${esc(ecartTexte(d))}</small></span></div>`).join("");
+    return `<article class="deal">
+      <div class="deal__top">
+        <div><div class="deal__dest">${esc(x.nom)}</div>
+          <div class="deal__sub">${esc(x.criteres.depart)}${x.criteres.retour ? " → " + esc(x.criteres.retour) : ""}
+            · ${x.criteres.adults} adulte${x.criteres.adults > 1 ? "s" : ""}
+            ${x.mode === "test" ? `<span class="badge badge--test">prix de test</span>` : ""}</div></div>
+      </div>
+      <div class="specs">${lignes || `<span class="hint">Aucun relevé exploitable pour l'instant.</span>`}</div>
+      <p class="footnote">${x.dernierReleve ? "Dernier relevé : " + esc(x.dernierReleve.replace("T", " ").slice(0, 16)) : "Aucun relevé encore"}
+        — <button type="button" class="chip" data-oublier="${esc(x.id)}">Ne plus surveiller</button></p>
+    </article>`;
+  }).join("");
+
+  return entete + (state.veilleMsg ? `<div class="alert alert--info"><span>🔔</span><div>${esc(state.veilleMsg)}</div></div>` : "")
+    + `<div class="deals">${cartes}</div>`;
 }
 
 /* ==================== ACTIONS ==================== */
@@ -1732,6 +1877,36 @@ function corpsDesTests(ok, out) {
      document.querySelectorAll("[aria-live]").length === 1
      && document.getElementById("annonce")?.hasAttribute("aria-live") === true
      && !document.getElementById("app")?.hasAttribute("aria-live"));
+  // Veille — les critères envoyés au serveur doivent porter ce qu'un relevé exige.
+  const cv = criteresVeille({ ...base, origin: "PAR", destinationType: "specific", destinations: ["FAO", "LIS"],
+                              adults: 2, children: 1, childrenAges: [8] },
+                            { depart: "2027-01-10", retour: "2027-01-18" });
+  // L'ordre est celui du jeu de séjours, pas celui de la saisie : on compare des
+  // ensembles, sinon l'assertion casse au premier réordonnancement de DEALS.
+  ok("veille : critères complets pour un relevé",
+     cv.origin === "PAR" && [...cv.destinations].sort().join(",") === "FAO,LIS"
+     && cv.depart === "2027-01-10" && cv.retour === "2027-01-18"
+     && cv.adults === 2 && cv.childrenAges.join(",") === "8");
+  ok("veille : les coordonnées suivent, sinon le serveur ne peut pas relever les hôtels",
+     cv.lieux.split(";").length === 2
+     && cv.lieux.split(";").every(l => /^[A-Z]{3}:-?[\d.]+,-?[\d.]+$/.test(l))
+     && cv.destinations.every(d => cv.lieux.includes(d + ":")));
+  ok("veille : jamais plus de 12 destinations, c'est le plafond des proxys",
+     criteresVeille({ ...base, destinationType: "flexible", destinations: [], childrenAges: [] },
+                    { depart: "2027-01-10", retour: "" }).destinations.length <= 12);
+  ok("veille : les enfants déclarés en trop ne partent pas",
+     criteresVeille({ ...base, children: 1, childrenAges: [8, 9, 10] },
+                    { depart: "2027-01-10", retour: "" }).childrenAges.length === 1);
+  // L'écart ne se raconte pas avant d'avoir deux points de mesure.
+  ok("veille : un seul relevé ne produit pas d'écart",
+     ecartTexte({ actuel: 300, meilleur: 300, ecart: 0, releves: 1 }) === "premier relevé");
+  ok("veille : sans relevé, on le dit",
+     ecartTexte({ actuel: null, meilleur: null, ecart: null, releves: 0 }) === "en attente du premier relevé");
+  ok("veille : au meilleur prix vu, l'écart est nommé tel quel",
+     ecartTexte({ actuel: 300, meilleur: 300, ecart: 0, releves: 4 }) === "au meilleur prix vu");
+  ok("veille : un écart positif est rendu en pourcentage",
+     ecartTexte({ actuel: 336, meilleur: 300, ecart: 12, releves: 4 }) === "12 % au-dessus du meilleur vu");
+
   // N — aucune branche du bandeau ne peut taire l'état hôtelier.
   // L'ancre est `const bandeau` : sans elle, indexOf tombait sur l'objet etatHotels,
   // qui porte les mêmes clés — l'assertion mesurait le mauvais littéral.

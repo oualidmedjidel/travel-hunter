@@ -18,6 +18,8 @@ import { fileURLToPath } from "node:url";
 
 import flights, { config as configFlights } from "./netlify/functions/flights.mjs";
 import stays, { config as configStays } from "./netlify/functions/stays.mjs";
+import veille, { config as configVeille } from "./netlify/functions/veille.mjs";
+import { demarrerBoucle } from "./netlify/lib/releve.mjs";
 
 const RACINE = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC = resolve(RACINE, "public");
@@ -30,7 +32,8 @@ const PORT = Number.parseInt(process.env.PORT || "3000", 10);
 // chaque fonction (`export const config = { path: "/api/flights" }`).
 const ROUTES = new Map([
   [configFlights.path, flights],
-  [configStays.path, stays]
+  [configStays.path, stays],
+  [configVeille.path, veille]
 ]);
 
 const TYPES = {
@@ -135,5 +138,8 @@ serveur.listen(PORT, () => {
   // Le port réellement attribué, pas celui demandé : avec PORT=0 l'OS en choisit un,
   // et c'est cette ligne que lit tests/serveur.test.mjs.
   console.log(`http://localhost:${serveur.address().port}  —  routes : ${[...ROUTES.keys()].join(", ")}`);
+  // La veille ne tourne que dans le processus lancé pour de bon : importé par un test,
+  // ce fichier ne doit ouvrir ni port ni minuterie.
+  demarrerBoucle();
 });
 }
