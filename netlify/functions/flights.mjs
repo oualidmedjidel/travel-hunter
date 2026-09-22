@@ -122,6 +122,10 @@ export default async (req) => {
     String(url.searchParams.get("destinations") || "").toUpperCase().split(",").map(d => d.trim()).filter(Boolean)
   )];
 
+  // Un âge hors bornes refuse la requête : l'amputer silencieusement faisait tarifer
+  // moins de voyageurs qu'il n'en a été demandé (constat D d'AUDIT.md).
+  if (agesEnfants === null) return json({ configured: true, error: "children_ages : chaque âge doit être un entier de 2 à 17 ans." }, 400);
+  if (agesBebes === null) return json({ configured: true, error: "infants_ages_months : chaque âge doit être un entier de 0 à 23 mois." }, 400);
   if (!IATA.test(origin)) return json({ configured: true, error: "origin doit être un code IATA de 3 lettres." }, 400);
   if (!destinations.length) return json({ configured: true, error: "destinations est vide." }, 400);
   if (destinations.length > MAX_DESTINATIONS) return json({ configured: true, error: `${MAX_DESTINATIONS} destinations maximum par appel.` }, 400);

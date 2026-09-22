@@ -432,7 +432,11 @@ dialog::backdrop { background: rgba(9,12,20,.55); backdrop-filter: blur(3px); }
   </div>
 </header>
 
-<main id="app" class="shell" aria-live="polite"></main>
+<main id="app" class="shell"></main>
+<!-- Région d'annonce dédiée. `aria-live` était posé sur #app, dont le contenu est
+     RÉÉCRIT EN ENTIER à chaque rendu : un lecteur d'écran réannonçait toute la page au
+     moindre clic sur un compteur. Ici, une phrase, et seulement quand elle change. -->
+<p id="annonce" class="sr-only" aria-live="polite"></p>
 
 <div class="actionbar" id="actionbar"></div>
 
@@ -982,9 +986,12 @@ function viewResults() {
     "reel": state.liveMode === "test"
       ? `<div class="alert alert--warn"><span>🧪</span><div><b>Tarifs de test</b> — Duffel répond en <b>bac à sable</b> au départ de ${esc(f.origin)} : horaires et prix <b>fictifs</b>, non réservables. ${esc(etatHotels)} Le transfert reste estimé.</div></div>`
       : `<div class="alert alert--info"><span>📡</span><div><b>Tarifs de vol réels</b> — remontés par Duffel au départ de ${esc(f.origin)}. ${esc(etatHotels)} Le transfert reste estimé.</div></div>`,
-    "non-configure": `<div class="alert alert--warn"><span>⚙️</span><div><b>Données de démonstration</b> — la variable <code>DUFFEL_TOKEN</code> n'est pas définie côté serveur, aucun tarif réel n'est interrogé.</div></div>`,
-    "erreur": `<div class="alert alert--warn"><span>⚠️</span><div><b>Repli sur la démonstration</b> — l'API de vols n'a rien renvoyé d'exploitable pour ce départ. Les prix affichés sont modélisés.</div></div>`,
-    "devise": `<div class="alert alert--warn"><span>💱</span><div><b>Devise incompatible</b> — ton compte Duffel facture dans une autre devise que l'euro. Les tarifs réels ont été écartés plutôt que d'être additionnés à tort à des prix d'hôtel en euros. Règle la devise du compte sur EUR.</div></div>`
+    // Les trois branches ci-dessous ne parlent que des VOLS : elles annonçaient « aucun
+    // tarif réel n'est interrogé » alors que les hôtels pouvaient être branchés, et elles
+    // taisaient l'état hôtelier. D'où la reformulation, et le rappel dans chacune.
+    "non-configure": `<div class="alert alert--warn"><span>⚙️</span><div><b>Vols de démonstration</b> — la variable <code>DUFFEL_TOKEN</code> n'est pas définie côté serveur, aucun tarif de vol réel n'est interrogé. ${esc(etatHotels)}</div></div>`,
+    "erreur": `<div class="alert alert--warn"><span>⚠️</span><div><b>Repli sur la démonstration</b> — l'API de vols n'a rien renvoyé d'exploitable pour ce départ. Les prix de vol affichés sont modélisés. ${esc(etatHotels)}</div></div>`,
+    "devise": `<div class="alert alert--warn"><span>💱</span><div><b>Devise incompatible</b> — ton compte Duffel facture dans une autre devise que l'euro. Les tarifs de vol réels ont été écartés plutôt que d'être additionnés à tort à des prix d'hôtel en euros. Règle la devise du compte sur EUR. ${esc(etatHotels)}</div></div>`
   }[state.liveStatus] || "";
 
   const head = `
@@ -1261,11 +1268,27 @@ function viewActionBar() {
 const app = document.getElementById("app");
 const actionbar = document.getElementById("actionbar");
 
+/**
+ * Retrouve après re-rendu l'élément qui avait le focus : son id s'il en a un, sinon la
+ * combinaison de TOUS ses attributs data-*.
+ *
+ * Les boutons du formulaire n'ont pas d'id — compteurs, mois, destinations, préférences.
+ * Le focus retombait donc sur <body> à chaque clic, et la navigation au clavier repartait
+ * du début de la page. Un seul data-* ne suffit pas : [data-step="adults"] désigne à la
+ * fois « − » et « + », d'où la concaténation.
+ */
+function selecteurFocus(el) {
+  if (!el || !el.attributes) return null;
+  if (el.id) return "#" + CSS.escape(el.id);
+  return [...el.attributes].filter(a => a.name.startsWith("data-"))
+    .map(a => `[${a.name}="${CSS.escape(a.value)}"]`).join("") || null;
+}
+
 function render() {
   // Le re-render remplace tout le DOM : on restaure le focus et le curseur,
   // sinon toute saisie est interrompue dès qu'un champ déclenche un rendu.
   const active = document.activeElement;
-  const focusId = active && active.id ? active.id : null;
+  const sel = selecteurFocus(active);
   let caret = null;
   try { caret = active && "selectionStart" in active ? active.selectionStart : null; } catch { caret = null; }
 
@@ -1273,8 +1296,18 @@ function render() {
   actionbar.innerHTML = viewActionBar();
   attach();
 
-  if (focusId) {
-    const el = document.getElementById(focusId);
+  // Une phrase, pas la page entière : c'est tout ce que le lecteur d'écran entend.
+  const annonce = document.getElementById("annonce");
+  if (annonce) {
+    annonce.textContent = state.loading
+      ? "Recherche en cours…"
+      : state.view === "results"
+        ? `${state.results.length} séjour${state.results.length > 1 ? "s" : ""} trouvé${state.results.length > 1 ? "s" : ""}`
+        : "";
+  }
+
+  if (sel) {
+    const el = document.querySelector(sel);
     if (el) {
       el.focus({ preventScroll: true });
       if (caret != null) { try { el.setSelectionRange(caret, caret); } catch {} }
@@ -1629,8 +1662,13 @@ function corpsDesTests(ok, out) {
 
   ok("14 nuits coûtent plus que 7", priceDeal(d, base, 14).total > p.total);
 
-  const budget = search({ ...base, maxBudget: 1200 });
-  ok("filtre budget appliqué", budget.rows.every(r => r.total <= 1200));
+  // À 1 200 € rien ne passait : [].every() vaut true, l'assertion était vraie même
+  // filtre débranché. À 1 500 €, trois séjours restent et sept sont écartés — elle voit
+  // donc le filtre garder ET rejeter.
+  const budget = search({ ...base, maxBudget: 1500 });
+  ok("filtre budget appliqué",
+     budget.rows.length > 0 && budget.rejected.budget > 0
+     && budget.rows.every(r => r.total <= 1500));
   const stars = search({ ...base, minStars: 5 });
   ok("filtre étoiles appliqué", stars.rows.every(r => r.stars >= 5) && stars.rows.length > 0);
   const schengen = search({ ...base, schengenOnly: true });
@@ -1677,6 +1715,34 @@ function corpsDesTests(ok, out) {
      validate({ ...base, flexibleDates: false, departureDate: addDays(today(), 45), returnDate: addDays(today(), 53) }) === null);
 
   ok("HTML échappé", esc('"><img src=x onerror=alert(1)>') === "&quot;&gt;&lt;img src=x onerror=alert(1)&gt;");
+
+  // H — un bouton sans id doit rester retrouvable après re-rendu.
+  const btnMois = document.querySelector('[data-month]');
+  ok("focus : un bouton sans id est retrouvé par ses data-*",
+     btnMois ? document.querySelector(selecteurFocus(btnMois)) !== null : true);
+  // « − » et « + » partagent data-step : le sélecteur doit porter les DEUX attributs,
+  // sinon le focus revient sur le mauvais bouton.
+  const btnPlus = document.querySelector('[data-step][data-delta]');
+  ok("focus : un sélecteur porte tous les data-*, pas seulement le premier",
+     !btnPlus || (selecteurFocus(btnPlus).includes("data-step") && selecteurFocus(btnPlus).includes("data-delta")));
+  ok("focus : un élément sans id ni data-* ne produit pas de sélecteur vide",
+     selecteurFocus(document.createElement("span")) === null);
+  // I — une seule région live, et ce n'est plus l'application entière.
+  ok("une seule région aria-live, hors de #app",
+     document.querySelectorAll("[aria-live]").length === 1
+     && document.getElementById("annonce")?.hasAttribute("aria-live") === true
+     && !document.getElementById("app")?.hasAttribute("aria-live"));
+  // N — aucune branche du bandeau ne peut taire l'état hôtelier.
+  // L'ancre est `const bandeau` : sans elle, indexOf tombait sur l'objet etatHotels,
+  // qui porte les mêmes clés — l'assertion mesurait le mauvais littéral.
+  ok("les quatre branches du bandeau rappellent l'état des hôtels", (() => {
+    const src = viewResults.toString();
+    const dep = src.indexOf("const bandeau");
+    return dep > 0 && ["\"reel\"", "\"non-configure\"", "\"erreur\"", "\"devise\""].every(cle => {
+      const i = src.indexOf(cle + ":", dep);
+      return i > 0 && src.slice(i, i + 900).includes("etatHotels");
+    });
+  })());
   const hostile = sanitizeForm({ preferences: "pas-un-tableau", pension: "__proto__", minStars: "cinq", childrenAges: null, children: 2 });
   ok("sauvegarde hostile neutralisée", Array.isArray(hostile.preferences) && hostile.pension === DEFAULTS.pension && hostile.minStars === DEFAULTS.minStars);
   ok("âges synchronisés sur le nombre d'enfants", hostile.childrenAges.length === hostile.children);

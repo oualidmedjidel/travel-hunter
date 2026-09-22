@@ -138,10 +138,26 @@ export function creerCache(ttlMs, maxEntrees) {
   };
 }
 
-/** Liste d'entiers bornés depuis un paramètre « a,b,c ». */
-export const entiers = (brut, lo, hi) => String(brut || "")
-  .split(",").map(x => Number.parseInt(x.trim(), 10))
-  .filter(n => Number.isFinite(n) && n >= lo && n <= hi);
+/**
+ * Liste d'entiers bornés depuis un paramètre « a,b,c ». **null** si l'un d'eux sort des
+ * bornes ou n'est pas un entier — l'appelant doit alors refuser la requête.
+ *
+ * Le `.filter()` d'origine AMPUTAIT en silence : `entiers("1,5", 2, 17)` rendait `[5]`,
+ * et `passagers(2, [5], [])` partait chez Duffel avec **3 voyageurs pour 4 demandés**.
+ * Le tarif revenait pour trois personnes et s'affichait sous un badge de tarif réel.
+ * Côté séjours, le même trou faisait disparaître l'enfant de `occupations()`.
+ *
+ * Un paramètre absent ou vide reste une liste vide : c'est « aucun enfant », pas une
+ * erreur. Un créneau vide (« 5,,9 ») devient 0 et se fait donc refuser côté enfants
+ * (bornes 2..17) ; côté bébés il compte un bébé de 0 mois — on sur-compte, jamais
+ * l'inverse, et le prix penche du bon côté.
+ */
+export const entiers = (brut, lo, hi) => {
+  const net = String(brut == null ? "" : brut).trim();
+  if (!net) return [];
+  const out = net.split(",").map(Number);
+  return out.every(n => Number.isInteger(n) && n >= lo && n <= hi) ? out : null;
+};
 
 /**
  * Retire d'un texte toute trace des secrets, en deux temps.

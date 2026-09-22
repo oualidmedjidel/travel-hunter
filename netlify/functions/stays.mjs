@@ -70,7 +70,16 @@ export function occupations(adults, agesEnfants, nbChambres) {
  *  une chambre sans adulte n'est pas réservable et occupations() ne pourrait pas la rééquilibrer. */
 export const chambres = (adults, nbEnfants) => Math.max(1, Math.min(adults, Math.ceil((adults + nbEnfants) / 3)));
 
-/** Voyageurs au format Duffel Stays. */
+/**
+ * Voyageurs au format Duffel Stays — forme **jamais exercée** : Stays répond 403 sans
+ * activation commerciale, aucune requête n'a donc jamais abouti.
+ *
+ * Les mineurs partent en `{type:"adult", age:N}`, ce que `passagers()` (flights.mjs)
+ * n'émet pas : là, c'est `{age:N}` seul, conforme au contrat Duffel **Air** relevé en
+ * tête de ce fichier-là. Rien ne dit lequel des deux Stays attend. À trancher sur la
+ * première réponse réelle de /stays/search, pas avant — aligner à l'aveugle
+ * remplacerait une incertitude documentée par une certitude inventée.
+ */
 export function invites(adults, agesEnfants, agesBebesMois) {
   const out = [];
   for (let i = 0; i < adults; i++) out.push({ type: "adult" });
@@ -101,13 +110,19 @@ export function meilleurLiteApi(payload, cle, pensionVoulue, rooms = 1) {
       const auNiveauOffre = rt.offerRetailRate && nb(rt.offerRetailRate.amount);
       const tarifs = Array.isArray(rt.rates) ? rt.rates : [];
 
-      for (const r of tarifs) {
+      // `[{}]` : sans tarif détaillé, l'offre garde un prix — `offerRetailRate` couvre
+      // déjà tout le séjour. Avant, `rates: []` ou absent faisait disparaître la
+      // destination entière alors que le montant était là (constat A d'AUDIT.md).
+      for (const r of (tarifs.length ? tarifs : [{}])) {
         const t0 = r && r.retailRate && Array.isArray(r.retailRate.total) ? r.retailRate.total[0] : null;
         // Les deux branches doivent produire un total POUR TOUT LE SÉJOUR, toutes chambres :
         // c'est ce que la page consomme, et c'est ce que le tri ci-dessous compare.
         // offerRetailRate l'est déjà ; retailRate.total est par chambre, d'où × rooms.
         const parChambre = t0 ? nb(t0.amount) : null;
-        const montant = auNiveauOffre != null
+        // `> 0` et non `!= null` : un `offerRetailRate.amount` à 0 (ou négatif) n'est pas
+        // un prix, c'est une absence de prix. Il écartait le roomType entier au lieu de
+        // laisser le repli par chambre faire son travail.
+        const montant = auNiveauOffre > 0
           ? auNiveauOffre
           : (parChambre != null ? parChambre * rooms : null);
         if (montant == null || montant <= 0) continue;
@@ -230,6 +245,9 @@ export default async (req) => {
   const pension = String(url.searchParams.get("pension") || "") || null;
   const lieux = lireLieux(url.searchParams.get("lieux"));
 
+  // Jumelle de la garde de flights.mjs : même défaut, mêmes bornes, même refus.
+  if (agesEnfants === null) return json({ configured: true, error: "children_ages : chaque âge doit être un entier de 2 à 17 ans." }, 400);
+  if (agesBebes === null) return json({ configured: true, error: "infants_ages_months : chaque âge doit être un entier de 0 à 23 mois." }, 400);
   if (!lieux.length) return json({ configured: true, error: "lieux est vide ou mal formé (attendu « CLE:lat,lon;… »)." }, 400);
   if (lieux.length > MAX_LIEUX) return json({ configured: true, error: `${MAX_LIEUX} lieux maximum par appel.` }, 400);
   // Même barrière que pour les vols : forme, calendrier, passé et horizon de vente.
