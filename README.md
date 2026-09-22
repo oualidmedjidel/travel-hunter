@@ -31,17 +31,20 @@ aucun badge « réel » ne surmonte jamais une donnée fictive.
 https://travel-hunter.fr/                200 · 92 558 o · md5 b39e642fc016a2b6f66043e67108fb24
                                          = public/index.html local, à l'octet
 /api/flights 10 destinations depuis PAR  200 · 14,2 s · 10/10 trouvées · devises ["EUR"]
-/api/stays   RAK                         200 · fournisseur "duffel" · trouves 0
-                                         sansOffre[0] : 403 « This feature is not enabled
-                                         for your account »
+/api/stays   2 lieux                     200 · 3,9 s · fournisseur "liteapi" · mode "test"
+                                         2/2 trouvés · EUR · vrais établissements,
+                                         prix de bac à sable
 ?selftest=1 dans un navigateur           61 PASS · 0 FAIL
 npm test                                 233/233 OK · 40/40 OK
 ```
 
 - **Vols : réels**, avec un jeton de bac à sable (`mode:"test"`) — d'où le badge `vol test`,
   jamais `vol réel`.
-- **Hôtels : de démonstration.** `LITEAPI_KEY` n'est pas posée ; le repli Duffel Stays est
-  refusé en 403 (activation commerciale). Poser la clé suffit à faire basculer les badges.
+- **Hôtels : LiteAPI branché, en bac à sable.** La clé `sand_…` est gratuite, la clé
+  `prod_…` demande un moyen de paiement chez Nuitee. Établissements, notes et pensions sont
+  réels, les prix sont des données d'exemple — d'où le badge `hôtel test`. Remplacer la
+  valeur de `LITEAPI_KEY` par une clé `prod_` suffit à passer à `hôtel réel`, sans toucher au
+  code (`modeLite()` dans `netlify/functions/stays.mjs`).
 - **Transfert : modélisé**, annoncé comme tel sur chaque carte.
 
 ## Points d'entrée
