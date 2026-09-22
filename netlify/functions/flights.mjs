@@ -30,7 +30,7 @@
  * Sans jeton : 200 { configured:false } → la page bascule en démonstration.
  */
 
-import { API, IATA, JOUR, json, jeton, entetes, empreinteJeton, parLots, creerCache, entiers, motifEchec }
+import { API, IATA, jourValide, json, jeton, entetes, empreinteJeton, parLots, creerCache, entiers, motifEchec }
   from "../lib/duffel.mjs";
 
 const ROUTE = `${API}/air/offer_requests`;
@@ -127,8 +127,10 @@ export default async (req) => {
   if (destinations.length > MAX_DESTINATIONS) return json({ configured: true, error: `${MAX_DESTINATIONS} destinations maximum par appel.` }, 400);
   if (destinations.some(d => !IATA.test(d))) return json({ configured: true, error: "chaque destination doit être un code IATA de 3 lettres." }, 400);
   if (destinations.includes(origin)) return json({ configured: true, error: "une destination ne peut pas être l'aéroport de départ." }, 400);
-  if (!JOUR.test(depart)) return json({ configured: true, error: "depart_date doit être au format YYYY-MM-DD." }, 400);
-  if (retour && !JOUR.test(retour)) return json({ configured: true, error: "return_date doit être au format YYYY-MM-DD." }, 400);
+  // jourValide refuse aussi le 31 février, une date passée et une date au-delà de
+  // l'horizon de vente : chacune partait en 12 appels amont pour rien.
+  if (!jourValide(depart)) return json({ configured: true, error: "depart_date doit être une date réelle au format YYYY-MM-DD, ni passée ni au-delà de l'horizon de vente." }, 400);
+  if (retour && !jourValide(retour)) return json({ configured: true, error: "return_date doit être une date réelle au format YYYY-MM-DD, ni passée ni au-delà de l'horizon de vente." }, 400);
   if (retour && retour <= depart) return json({ configured: true, error: "return_date doit suivre depart_date." }, 400);
   if (!(adults >= 1 && adults <= 9)) return json({ configured: true, error: "adults doit être compris entre 1 et 9." }, 400);
   if (adults + agesEnfants.length > 9) return json({ configured: true, error: "9 voyageurs assis maximum (adultes + enfants)." }, 400);
@@ -157,6 +159,10 @@ export default async (req) => {
           accept: "application/json"
         },
         body: JSON.stringify({ data: { slices, passengers: pax, cabin_class: "economy", max_connections: 1 } }),
+        // Une redirection n'est jamais suivie : undici retire `authorization` en
+        // inter-origine mais pas un en-tête maison, et suivre à l'aveugle enverrait
+        // les identifiants chez l'hôte indiqué par l'amont. Un 3xx devient un échec.
+        redirect: "manual",
         signal: AbortSignal.timeout(BUDGET_MS / 2)
       });
 

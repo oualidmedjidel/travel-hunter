@@ -512,6 +512,12 @@ const PREFS = [
  * tant que l'utilisateur ne l'a pas bougé — les résultats d'avant ne changent pas. */
 const PLAGE_LIBRE = 50;
 
+/* Horizon de vente, en jours. Même valeur que HORIZON_JOURS dans netlify/lib/duffel.mjs :
+ * au-delà, les deux proxys refusent en 400 plutôt que de gaspiller douze appels amont.
+ * La page le dit AVANT l'appel — un champ borné vaut mieux qu'un refus après 15 s. */
+const HORIZON_JOURS = 400;
+const dernierJour = () => addDays(today(), HORIZON_JOURS);
+
 const DEFAULTS = Object.freeze({
   origin: "PAR",
   adults: 2, children: 1, childrenAges: [3], babies: 1, babiesAges: [10],
@@ -697,6 +703,7 @@ function validate(f) {
   if (!f.departureDate || !f.returnDate) return "Renseigne les dates de départ et de retour.";
   if (f.returnDate <= f.departureDate) return "Le retour doit être après le départ.";
   if (f.departureDate < today()) return "La date de départ est déjà passée.";
+  if (f.returnDate > dernierJour()) return `Les fournisseurs ne tarifent pas au-delà de ${HORIZON_JOURS} jours.`;
   if (nightsBetween(f.departureDate, f.returnDate) > 60) return "60 nuits maximum par recherche.";
   return null;
 }
@@ -780,12 +787,13 @@ function viewForm() {
       ${!f.flexibleDates ? `
         <div class="field" style="margin-top:.9rem">
           <label for="departureDate">Départ</label>
-          <input class="input" type="date" id="departureDate" value="${esc(f.departureDate)}" min="${today()}">
+          <input class="input" type="date" id="departureDate" value="${esc(f.departureDate)}"
+                 min="${today()}" max="${dernierJour()}">
         </div>
         <div class="field">
           <label for="returnDate">Retour</label>
           <input class="input" type="date" id="returnDate" value="${esc(f.returnDate)}"
-                 min="${esc(f.departureDate || today())}">
+                 min="${esc(f.departureDate || today())}" max="${dernierJour()}">
           ${f.departureDate && f.returnDate && f.returnDate > f.departureDate
             ? `<span class="hint">${nightsBetween(f.departureDate, f.returnDate)} nuits sur place.</span>`
             : `<span class="hint">Choisis un départ puis un retour.</span>`}
@@ -1655,7 +1663,18 @@ function corpsDesTests(ok, out) {
   ok("le mois interrogé est bien celui qui est affiché",
      datesEffectives({ ...flex, selectedMonths: [11] }).depart.slice(5, 7) === "11");
   ok("retour avant départ refusé", validate({ ...base, flexibleDates: false, departureDate: "2099-06-10", returnDate: "2099-06-02" }) !== null);
-  ok("dates valides acceptées", validate({ ...base, flexibleDates: false, departureDate: "2099-06-02", returnDate: "2099-06-10" }) === null);
+  // Au-delà de l'horizon, le refus doit venir de la page : les proxys rendraient 400
+  // après coup, et l'utilisateur aurait attendu pour rien.
+  ok("au-delà de l'horizon de vente, refusé avant l'appel",
+     validate({ ...base, flexibleDates: false, departureDate: "2099-06-02", returnDate: "2099-06-10" }) !== null);
+  ok("dans l'horizon, accepté",
+     validate({ ...base, flexibleDates: false, departureDate: addDays(today(), 30), returnDate: addDays(today(), 38) }) === null);
+  ok("le mode flexible reste dans l'horizon",
+     datesEffectives({ ...base, flexibleDates: true, selectedMonths: [new Date().getMonth() + 1], tripDuration: 14 }).retour <= dernierJour());
+  // Les dates de 2099 servaient de « dates valides » : elles ne le sont plus depuis que
+  // l'horizon de vente est une règle. Un séjour proche les remplace.
+  ok("dates valides acceptées",
+     validate({ ...base, flexibleDates: false, departureDate: addDays(today(), 45), returnDate: addDays(today(), 53) }) === null);
 
   ok("HTML échappé", esc('"><img src=x onerror=alert(1)>') === "&quot;&gt;&lt;img src=x onerror=alert(1)&gt;");
   const hostile = sanitizeForm({ preferences: "pas-un-tableau", pension: "__proto__", minStars: "cinq", childrenAges: null, children: 2 });

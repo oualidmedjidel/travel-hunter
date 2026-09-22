@@ -37,7 +37,7 @@
  *                                  cheapest_rate_currency, accommodation:{…} } ] } }
  */
 
-import { API, JOUR, json, jeton, entetes, empreinteJeton, parLots, creerCache, entiers, motifEchec }
+import { API, jourValide, nuitsEntre, json, jeton, entetes, empreinteJeton, parLots, creerCache, entiers, motifEchec }
   from "../lib/duffel.mjs";
 
 const LITEAPI = "https://api.liteapi.travel/v3.0/hotels/rates";
@@ -45,6 +45,7 @@ const MAX_LIEUX = 12;
 const CONCURRENCE = 6;
 const BUDGET_MS = 18000;
 const RAYON_M = 12000;        // 12 km : couvre une ville et sa côte
+const MAX_NUITS = 60;         // au-delà, ce n'est plus un séjour : la page borne déjà à 60
 const NATIONALITE = "FR";
 const cache = creerCache(15 * 60 * 1000, 300);
 
@@ -231,8 +232,11 @@ export default async (req) => {
 
   if (!lieux.length) return json({ configured: true, error: "lieux est vide ou mal formé (attendu « CLE:lat,lon;… »)." }, 400);
   if (lieux.length > MAX_LIEUX) return json({ configured: true, error: `${MAX_LIEUX} lieux maximum par appel.` }, 400);
-  if (!JOUR.test(arrivee)) return json({ configured: true, error: "check_in doit être au format YYYY-MM-DD." }, 400);
-  if (!JOUR.test(depart)) return json({ configured: true, error: "check_out doit être au format YYYY-MM-DD." }, 400);
+  // Même barrière que pour les vols : forme, calendrier, passé et horizon de vente.
+  if (!jourValide(arrivee)) return json({ configured: true, error: "check_in doit être une date réelle au format YYYY-MM-DD, ni passée ni au-delà de l'horizon de vente." }, 400);
+  if (!jourValide(depart)) return json({ configured: true, error: "check_out doit être une date réelle au format YYYY-MM-DD, ni passée ni au-delà de l'horizon de vente." }, 400);
+  // 29 219 nuits passaient sans broncher et partaient chez le fournisseur.
+  if (nuitsEntre(arrivee, depart) > MAX_NUITS) return json({ configured: true, error: `${MAX_NUITS} nuits maximum par séjour.` }, 400);
   if (depart <= arrivee) return json({ configured: true, error: "check_out doit suivre check_in." }, 400);
   if (!(adults >= 1 && adults <= 9)) return json({ configured: true, error: "adults doit être compris entre 1 et 9." }, 400);
   if (adults + agesEnfants.length > 9) return json({ configured: true, error: "9 voyageurs maximum (adultes + enfants)." }, 400);
@@ -253,6 +257,10 @@ export default async (req) => {
         res = await fetch(LITEAPI, {
           method: "POST",
           headers: { "X-API-Key": cleLite, "content-type": "application/json", accept: "application/json" },
+          // `X-API-Key` n'est PAS retiré par undici sur une redirection inter-origine —
+          // mesuré : `authorization` disparaît, celui-ci non. Un 302 de l'amont aurait
+          // donc livré la clé LiteAPI entière à l'hôte de destination. Jamais suivi.
+          redirect: "manual",
           body: JSON.stringify({
             occupancies: occupations(adults, agesEnfants, rooms),
             currency: "EUR",
@@ -272,6 +280,7 @@ export default async (req) => {
         res = await fetch(`${API}/stays/search`, {
           method: "POST",
           headers: entetes(duffelToken),
+          redirect: "manual",
           body: JSON.stringify({
             data: {
               rooms, check_in_date: arrivee, check_out_date: depart,
