@@ -7,7 +7,18 @@
  *
  * Ici : network-first pour les navigations (HTML), cache-first pour le reste.
  */
-const CACHE = "tdh-v3";
+const CACHE = "tdh-v4";   // v3 → v4 : purge les caches empoisonnés par le défaut corrigé ci-dessous
+
+/**
+ * Ce qui mérite d'entrer en cache. La version précédente mettait en cache la réponse de
+ * navigation SANS regarder son statut : un 500 ou un 404 attrapé une fois devenait la page
+ * servie hors-ligne, et le cache le gardait jusqu'à la prochaine visite en ligne réussie.
+ * Une page d'erreur n'est pas un repli, c'est une panne figée.
+ *
+ * `type` écarte les réponses opaques (cross-origin), dont on ne peut rien lire : `ok` y vaut
+ * toujours false, mais la garde est explicite pour qui relira.
+ */
+const enCache = res => !!res && res.ok && res.type !== "opaque";
 const PRECACHE = ["/", "/index.html", "/manifest.json"];
 
 self.addEventListener("install", e => {
@@ -37,8 +48,10 @@ self.addEventListener("fetch", e => {
     e.respondWith(
       fetch(req)
         .then(res => {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+          if (enCache(res)) {
+            const copy = res.clone();
+            caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+          }
           return res;
         })
         .catch(() => caches.match(req).then(r => r || caches.match("/index.html")))
@@ -49,7 +62,7 @@ self.addEventListener("fetch", e => {
   // Statique : cache d'abord, réseau en remplissage.
   e.respondWith(
     caches.match(req).then(hit => hit || fetch(req).then(res => {
-      if (res && res.status === 200 && res.type === "basic") {
+      if (enCache(res) && res.type === "basic") {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
       }

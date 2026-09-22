@@ -42,6 +42,20 @@ const CONCURRENCE = 6;
 const BUDGET_MS = 18000;
 const cache = creerCache(15 * 60 * 1000, 300);
 
+/**
+ * Une offre Duffel porte sa propre date de péremption, et elle est plus courte que le cache.
+ * Sans cette garde, une offre expirée depuis dix minutes ressortait du cache (TTL 15 min) et
+ * s'affichait comme un prix courant : le voyageur cliquait sur un tarif qui n'existait plus.
+ *
+ * Une offre sans `expiresAt` (ou avec une date illisible) n'est jamais déclarée périmée :
+ * seule une date lue et dépassée écarte l'offre.
+ */
+export function perimee(offre, maintenant = Date.now()) {
+  if (!offre || typeof offre.expiresAt !== "string") return false;
+  const t = Date.parse(offre.expiresAt);
+  return Number.isFinite(t) && t <= maintenant;
+}
+
 /** Adultes par `type`, mineurs par `age` : c'est la forme documentée par Duffel. */
 export function passagers(adults, agesEnfants, agesBebesMois) {
   const out = [];
@@ -127,7 +141,8 @@ export default async (req) => {
   const { resultats, abandonnees } = await parLots(destinations.map(dest => async () => {
     const cle = `${signature}|${dest}`;
     const hit = cache.lire(cle);
-    if (hit !== undefined) return hit;
+    // Une offre encore en cache mais périmée est rejetée : on redemande à l'amont.
+    if (hit !== undefined && !perimee(hit)) return hit;
 
     const slices = [{ origin, destination: dest, departure_date: depart }];
     if (retour) slices.push({ origin: dest, destination: origin, departure_date: retour });
