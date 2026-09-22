@@ -456,6 +456,8 @@ const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const int = (v, dflt = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : dflt; };
 const num = (v, dflt = 0) => { const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : dflt; };
 const eur = n => Math.round(n).toLocaleString("fr-FR") + " €";
+/* Au maximum, le curseur n'est plus une limite : il l'annonce au lieu d'afficher « 50 km ». */
+const libellePlage = km => km >= PLAGE_LIBRE ? "sans limite" : `${km} km max`;
 const MONTHS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (iso, d) => { const t = new Date(iso + "T12:00:00"); t.setDate(t.getDate() + d); return t.toISOString().slice(0, 10); };
@@ -502,6 +504,14 @@ const PREFS = [
 ];
 
 /* ==================== STATE ==================== */
+
+/* Distance à la plage : au-delà de ce curseur, le filtre est désactivé plutôt que
+ * de plafonner. Le jeu de séjours va jusqu'à 180 km (Marrakech) ; sans cette
+ * échappatoire, un curseur borné à 50 km écarterait définitivement l'intérieur des
+ * terres. C'est aussi la valeur par défaut : le filtre existe, mais n'écarte rien
+ * tant que l'utilisateur ne l'a pas bougé — les résultats d'avant ne changent pas. */
+const PLAGE_LIBRE = 50;
+
 const DEFAULTS = Object.freeze({
   origin: "PAR",
   adults: 2, children: 1, childrenAges: [3], babies: 1, babiesAges: [10],
@@ -510,7 +520,7 @@ const DEFAULTS = Object.freeze({
   destinationType: "flexible", destinations: [],
   schengenOnly: false, maxBudget: 2500,
   minStars: 4, minRating: 7.5, pension: "demi-pension",
-  maxTransfer: 60, maxBeachDistance: 5, familyHotel: true,
+  maxTransfer: 60, maxBeachDistance: PLAGE_LIBRE, familyHotel: true,
   preferences: ["plage", "chaleur", "beaux-paysages", "peu-touristique", "rapport-qualite-prix"]
 });
 
@@ -555,6 +565,7 @@ function sanitizeForm(raw) {
   f.minRating     = clamp(num(raw.minRating, f.minRating), 0, 10);
   f.pension       = Object.hasOwn(PENSIONS, raw.pension) ? raw.pension : f.pension;
   f.maxTransfer   = clamp(int(raw.maxTransfer, f.maxTransfer), 10, 240);
+  f.maxBeachDistance = clamp(int(raw.maxBeachDistance, f.maxBeachDistance), 1, PLAGE_LIBRE);
   f.familyHotel   = raw.familyHotel !== false;
   f.preferences   = Array.isArray(raw.preferences) ? raw.preferences.filter(p => PREFS.some(x => x.id === p)) : f.preferences;
   syncAges(f);
@@ -629,7 +640,7 @@ function search(f, live, stays) {
     ? clamp(raw, 1, 60)
     : clamp(int(f.tripDuration, DEFAULTS.tripDuration), 1, 60);
 
-  const rejected = { stars: 0, rating: 0, schengen: 0, transfer: 0, budget: 0, dest: 0, family: 0 };
+  const rejected = { stars: 0, rating: 0, schengen: 0, transfer: 0, beach: 0, budget: 0, dest: 0, family: 0 };
   const kept = [];
 
   for (const d of DEALS) {
@@ -638,6 +649,9 @@ function search(f, live, stays) {
     if (d.stars < f.minStars) { rejected.stars++; continue; }
     if (d.rating < f.minRating) { rejected.rating++; continue; }
     if (d.transferMin > f.maxTransfer) { rejected.transfer++; continue; }
+    // beachKm vient du jeu de séjours, jamais d'une API : la distance reste modélisée,
+    // même quand le prix de l'hôtel est réel. Le libellé du curseur le dit.
+    if (f.maxBeachDistance < PLAGE_LIBRE && d.beachKm > f.maxBeachDistance) { rejected.beach++; continue; }
     if (f.familyHotel && !d.family) { rejected.family++; continue; }
     const p = priceDeal(d, f, nights, live && live.get ? live.get(d.id) : null, stays && stays.get ? stays.get(d.id) : null);
     if (p.total > f.maxBudget) { rejected.budget++; continue; }
@@ -657,7 +671,8 @@ function sortRows(rows, mode) {
 function topReason(rejected) {
   const labels = {
     budget: "ton budget max", stars: "le nombre d'étoiles min", rating: "la note min",
-    transfer: "la durée de transfert max", schengen: "le filtre Schengen",
+    transfer: "la durée de transfert max", beach: "la distance à la plage max",
+    schengen: "le filtre Schengen",
     dest: "les destinations choisies", family: "le filtre hôtel familial"
   };
   const [key, n] = Object.entries(rejected).sort((a, b) => b[1] - a[1])[0] || [];
@@ -868,6 +883,14 @@ function viewForm() {
         </div>
         <input type="range" id="minRating" min="6" max="9.5" step="0.1" value="${f.minRating}">
       </div>
+      <div class="field">
+        <div class="range-head">
+          <label for="maxBeachDistance">Distance à la plage</label>
+          <span class="range-val num" id="beachOut">${libellePlage(f.maxBeachDistance)}</span>
+        </div>
+        <input type="range" id="maxBeachDistance" min="1" max="${PLAGE_LIBRE}" step="1" value="${f.maxBeachDistance}">
+        <span class="hint">Distance modélisée, comme le transfert — elle ne vient d'aucune API.</span>
+      </div>
     </div>
 
     <div class="card">
@@ -1062,10 +1085,31 @@ function lienVols(origine, iata, depart, retour) {
  * Lien Booking. Quand le tarif est réel mais que l'amont n'a pas donné le nom de
  * l'établissement, on cherche la ville — pas l'hôtel de démonstration, qui enverrait
  * sur un AUTRE hôtel que celui dont le prix est affiché.
+ *
+ * Le séjour est recopié dans l'URL — dates, voyageurs, âges, nombre de chambres —
+ * pour que la recherche ouverte soit celle qui a produit le prix affiché, et non un
+ * formulaire vide aux dates du jour. `rooms` vient de `priceDeal`, jamais recalculé
+ * ici : la règle des chambres ne doit vivre qu'à un seul endroit dans cette page.
+ *
+ * ⚠️ Non vérifié de bout en bout : Booking sert une page dégradée à l'automatisation,
+ * impossible de constater de l'extérieur qu'il honore ces paramètres. Ce qui EST
+ * vérifié, par l'auto-test, c'est que l'URL les porte. Appelé sans `f` (les anciens
+ * appels, et l'auto-test du nom), le lien reste exactement celui d'avant.
  */
-function lienHotel(nom, ville) {
+function lienHotel(nom, ville, f, rooms) {
   const q = nom ? `${nom}, ${ville}` : `hôtels ${ville}`;
-  return "https://www.booking.com/searchresults.html?ss=" + encodeURIComponent(q);
+  let url = "https://www.booking.com/searchresults.html?ss=" + encodeURIComponent(q);
+  if (!f) return url;
+
+  if (!f.flexibleDates && f.departureDate && f.returnDate) {
+    url += `&checkin=${encodeURIComponent(f.departureDate)}&checkout=${encodeURIComponent(f.returnDate)}`;
+  }
+  // Booking ne connaît pas les bébés : ce sont des enfants d'âge 0 ou 1, comme chez
+  // les deux fournisseurs hôteliers (`invites()` dans stays.mjs fait le même calcul).
+  const ages = [...(f.childrenAges || []), ...(f.babiesAges || []).map(m => Math.min(1, Math.max(0, Math.floor(int(m) / 12))))];
+  url += `&group_adults=${int(f.adults, 1)}&group_children=${ages.length}&no_rooms=${Math.max(1, int(rooms, 1))}`;
+  for (const a of ages) url += `&age=${int(a)}`;
+  return url;
 }
 
 function noteComposition(volReel, hotelReel, nuits, mode) {
@@ -1116,7 +1160,7 @@ function dealCard(r, i, f) {
   const dates = f.flexibleDates ? "" : `${f.departureDate.slice(8)}/${f.departureDate.slice(5, 7)} → ${f.returnDate.slice(8)}/${f.returnDate.slice(5, 7)}`;
   const bv = badgeVol(r.flightReel, state.liveMode);
   const flightsUrl = lienVols(f.origin, r.id, f.flexibleDates ? "" : f.departureDate, f.flexibleDates ? "" : f.returnDate);
-  const hotelUrl   = lienHotel(r.hotelNom || (r.hotelReel ? "" : r.hotel), r.city);
+  const hotelUrl   = lienHotel(r.hotelNom || (r.hotelReel ? "" : r.hotel), r.city, f, r.rooms);
 
   return `
   <article class="deal${i === 0 ? " deal--best" : ""}">
@@ -1251,6 +1295,7 @@ function attach() {
   live("maxBudget", "budgetOut", v => eur(v), v => f.maxBudget = int(v, DEFAULTS.maxBudget));
   live("maxTransfer", "transferOut", v => `${int(v)} min`, v => f.maxTransfer = int(v, DEFAULTS.maxTransfer));
   live("minRating", "ratingOut", v => `${num(v).toFixed(1)}/10`, v => f.minRating = num(v, DEFAULTS.minRating));
+  live("maxBeachDistance", "beachOut", v => libellePlage(int(v)), v => f.maxBeachDistance = int(v, DEFAULTS.maxBeachDistance));
 
   document.querySelectorAll("[data-datemode]").forEach(b => b.addEventListener("click", () => {
     f.flexibleDates = b.dataset.datemode === "flexible"; state.error = null; render();
@@ -1551,6 +1596,14 @@ function corpsDesTests(ok, out) {
   ok("filtre Schengen appliqué", schengen.rows.every(r => r.schengen));
   const transfer = search({ ...base, maxTransfer: 25 });
   ok("filtre transfert appliqué", transfer.rows.every(r => r.transferMin <= 25));
+  const plage = search({ ...base, maxBeachDistance: 2 });
+  ok("filtre plage appliqué", plage.rows.length > 0 && plage.rows.every(r => r.beachKm <= 2));
+  ok("filtre plage au maximum = aucune limite",
+     search({ ...base, maxBeachDistance: PLAGE_LIBRE }).rows.length === search(base).rows.length
+     && search({ ...base, maxBeachDistance: PLAGE_LIBRE }).rows.some(r => r.beachKm > PLAGE_LIBRE));
+  ok("distance à la plage assainie", sanitizeForm({ ...base, maxBeachDistance: 9999 }).maxBeachDistance === PLAGE_LIBRE
+     && sanitizeForm({ ...base, maxBeachDistance: -3 }).maxBeachDistance === 1
+     && sanitizeForm({ ...base, maxBeachDistance: "sept" }).maxBeachDistance === base.maxBeachDistance);
 
   ok("mode flexible validé sans dates", validate({ ...base, flexibleDates: true, selectedMonths: [5], tripDuration: 7 }) === null);
   ok("mode flexible refusé sans mois", validate({ ...base, flexibleDates: true, selectedMonths: [], tripDuration: 7 }) !== null);
@@ -1653,6 +1706,20 @@ function corpsDesTests(ok, out) {
      decodeURIComponent(lienHotel("Vila Galé", "Faro").split("?ss=")[1]) === "Vila Galé, Faro");
   ok("lien hôtel : la ville seule plutôt qu'un AUTRE hôtel",
      decodeURIComponent(lienHotel("", "Faro").split("?ss=")[1]) === "hôtels Faro");
+
+  // Le lien doit rouvrir LE séjour affiché : mêmes dates, mêmes voyageurs, mêmes chambres.
+  const sejour = { ...base, flexibleDates: false, departureDate: "2026-11-05", returnDate: "2026-11-13",
+                   adults: 2, children: 1, childrenAges: [8], babies: 1, babiesAges: [10] };
+  const q = new URL(lienHotel("Vila Galé", "Faro", sejour, 2)).searchParams;
+  ok("lien hôtel : dates du séjour transmises",
+     q.get("checkin") === "2026-11-05" && q.get("checkout") === "2026-11-13");
+  ok("lien hôtel : voyageurs, âges et chambres transmis",
+     q.get("group_adults") === "2" && q.get("group_children") === "2"
+     && q.getAll("age").join(",") === "8,0" && q.get("no_rooms") === "2");
+  ok("lien hôtel : aucune date en mode flexible",
+     !new URL(lienHotel("Vila Galé", "Faro", { ...sejour, flexibleDates: true }, 1)).searchParams.has("checkin"));
+  ok("lien hôtel : l'hôtel reste le premier paramètre",
+     decodeURIComponent(lienHotel("Vila Galé", "Faro", sejour, 1).split("?ss=")[1].split("&")[0]) === "Vila Galé, Faro");
 
   // La note de bas de page ne doit jamais annoncer « démonstration » sur un tarif réel,
   // ni promettre « réel » sur un composant modélisé.
