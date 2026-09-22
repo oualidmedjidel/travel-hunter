@@ -7,7 +7,7 @@ Zéro dépendance — tout est natif Node.
 
 ```
 npm start        # node serveur.mjs, écoute sur $PORT (3000 par défaut)
-npm test         # 233 assertions + 40 sur l'adaptateur HTTP
+npm test         # 314 assertions + 40 sur l'adaptateur HTTP
 ```
 
 En production, la commande de démarrage est `node --env-file-if-exists=.env serveur.mjs`.
@@ -25,17 +25,16 @@ URL. Jamais versionné.
 Sans clé, l'application répond `200 {configured:false}` et bascule en démonstration :
 aucun badge « réel » ne surmonte jamais une donnée fictive.
 
-## État mesuré le 2026-09-22
+## État mesuré le 2026-09-23
 
 ```
-https://travel-hunter.fr/                200 · 92 558 o · md5 b39e642fc016a2b6f66043e67108fb24
+https://travel-hunter.fr/                200 · 106 460 o · md5 174129762e7add9e660439261811cd88
                                          = public/index.html local, à l'octet
 /api/flights 10 destinations depuis PAR  200 · 14,2 s · 10/10 trouvées · devises ["EUR"]
-/api/stays   2 lieux                     200 · 3,9 s · fournisseur "liteapi" · mode "test"
-                                         2/2 trouvés · EUR · vrais établissements,
-                                         prix de bac à sable
-?selftest=1 dans un navigateur           61 PASS · 0 FAIL
-npm test                                 233/233 OK · 40/40 OK
+/api/stays   2 lieux                     200 · 4,1 s · fournisseur "liteapi" · mode "test"
+                                         vrais établissements, prix de bac à sable
+?selftest=1 dans un navigateur           84 PASS · 0 FAIL
+npm test                                 314/314 OK · 40/40 OK
 ```
 
 - **Vols : réels**, avec un jeton de bac à sable (`mode:"test"`) — d'où le badge `vol test`,
@@ -99,6 +98,9 @@ Le dossier `netlify/` garde son nom d'origine : le renommer toucherait les impor
 rien apporter. Netlify n'héberge plus l'application — `tdhunt.netlify.app` redirige en 301
 vers `travel-hunter.fr`.
 
-L'auto-test de l'interface s'ouvre avec `?selftest=1` : 61 assertions (tarification,
-filtres, validation, échappement HTML, fusion des tarifs réels, comptage des chambres)
-affichées en surimpression.
+L'auto-test de l'interface s'ouvre avec `?selftest=1` : 84 assertions (tarification,
+filtres, validation, échappement HTML, fusion des tarifs réels, comptage des chambres,
+horizon de vente, badges, focus clavier) affichées en surimpression.
+
+Aucun de ces chiffres ne fait foi par lui-même : `npm test` et `?selftest=1` les
+impriment, et ce sont eux la source. Un compte recopié ici vieillit ; relancez-les.
