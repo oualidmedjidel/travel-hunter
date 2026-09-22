@@ -256,7 +256,7 @@ select.input {
   transition: all .15s var(--ease);
 }
 .month:hover { border-color: var(--primary); }
-.month[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-ink); }
+.month[aria-checked="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-ink); }
 
 /* range */
 .range-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .3rem; }
@@ -516,7 +516,7 @@ const DEFAULTS = Object.freeze({
   origin: "PAR",
   adults: 2, children: 1, childrenAges: [3], babies: 1, babiesAges: [10],
   flexibleDates: false, departureDate: "", returnDate: "",
-  selectedMonths: [4, 5], tripDuration: 8,
+  selectedMonths: [4], tripDuration: 8,   // un seul mois : c'est le seul qui soit interrogé
   destinationType: "flexible", destinations: [],
   schengenOnly: false, maxBudget: 2500,
   minStars: 4, minRating: 7.5, pension: "demi-pension",
@@ -556,7 +556,12 @@ function sanitizeForm(raw) {
   f.flexibleDates = !!raw.flexibleDates;
   f.departureDate = /^\d{4}-\d{2}-\d{2}$/.test(raw.departureDate) ? raw.departureDate : "";
   f.returnDate    = /^\d{4}-\d{2}-\d{2}$/.test(raw.returnDate) ? raw.returnDate : "";
-  f.selectedMonths= Array.isArray(raw.selectedMonths) ? raw.selectedMonths.map(m => int(m, 0)).filter(m => m >= 1 && m <= 12) : f.selectedMonths;
+  // Un seul mois est conservé : c'est le seul que la chasse interroge. Une recherche
+  // sauvegardée avant le 2026-09-22 peut en porter plusieurs — on garde le premier,
+  // exactement celui que `datesEffectives()` utilisait déjà en silence.
+  f.selectedMonths= Array.isArray(raw.selectedMonths)
+    ? raw.selectedMonths.map(m => int(m, 0)).filter(m => m >= 1 && m <= 12).slice(0, 1)
+    : f.selectedMonths;
   f.tripDuration  = clamp(int(raw.tripDuration, f.tripDuration), 2, 28);
   f.destinationType = raw.destinationType === "specific" ? "specific" : "flexible";
   f.destinations  = Array.isArray(raw.destinations) ? raw.destinations.filter(id => DEALS.some(d => d.id === id)) : [];
@@ -787,12 +792,13 @@ function viewForm() {
         </div>
       ` : `
         <div class="field" style="margin-top:.9rem">
-          <span class="field-label">Mois de départ possibles</span>
-          <div class="months" role="group" aria-label="Mois">
+          <span class="field-label" id="moisLabel">Mois de départ</span>
+          <div class="months" role="radiogroup" aria-labelledby="moisLabel">
             ${MONTHS.map((m, i) => `
-              <button type="button" class="month" data-month="${i + 1}"
-                      aria-pressed="${f.selectedMonths.includes(i + 1)}">${m}</button>`).join("")}
+              <button type="button" class="month" role="radio" data-month="${i + 1}"
+                      aria-checked="${f.selectedMonths.includes(i + 1)}">${m}</button>`).join("")}
           </div>
+          <span class="hint">Un seul mois : c'est celui qui sera réellement interrogé chez les fournisseurs, au 15 du mois.</span>
         </div>
         <div class="field">
           <label for="tripDuration">Durée du séjour</label>
@@ -1320,8 +1326,9 @@ function attach() {
     f.flexibleDates = b.dataset.datemode === "flexible"; state.error = null; render();
   }));
   document.querySelectorAll("[data-month]").forEach(b => b.addEventListener("click", () => {
-    const m = int(b.dataset.month);
-    f.selectedMonths = f.selectedMonths.includes(m) ? f.selectedMonths.filter(x => x !== m) : [...f.selectedMonths, m].sort((a, c) => a - c);
+    // Choix exclusif : cliquer un mois remplace le précédent. Cliquer le mois déjà choisi
+    // ne le retire pas — une chasse sans mois n'a pas de date à envoyer aux fournisseurs.
+    f.selectedMonths = [int(b.dataset.month)];
     render();
   }));
   /* l'onglet destination écrit enfin dans le state (il ne faisait que changer une classe CSS) */
@@ -1350,14 +1357,20 @@ function attach() {
  * la recherche doit rester utilisable même API éteinte.
  */
 /**
- * Dates réellement envoyées aux API. En mode flexible on dérive le 15 du premier
- * mois coché : les deux fournisseurs exigent des dates précises, et vols et hôtels
- * doivent porter exactement les mêmes.
+ * Dates réellement envoyées aux API. En mode flexible on dérive le 15 du mois choisi :
+ * les deux fournisseurs exigent des dates précises, et vols et hôtels doivent porter
+ * exactement les mêmes.
+ *
+ * L'interface n'accepte qu'un mois depuis le 2026-09-22. Auparavant elle en laissait
+ * cocher plusieurs et cette fonction ne lisait que le premier, sans le dire : les autres
+ * mois n'étaient jamais interrogés. Le choix est devenu exclusif plutôt que d'ouvrir une
+ * fenêtre de recherche par mois — ce qui aurait multiplié la durée d'une chasse (14 s
+ * mesurées pour 10 destinations) par le nombre de mois.
  */
 function datesEffectives(f) {
   if (!f.flexibleDates) return { depart: f.departureDate, retour: f.returnDate };
   if (!f.selectedMonths.length) return { depart: null, retour: null };
-  const mois = f.selectedMonths[0];
+  const mois = f.selectedMonths[0];   // l'unique mois retenu par sanitizeForm
   const annee = new Date().getMonth() + 1 >= mois ? new Date().getFullYear() + 1 : new Date().getFullYear();
   const depart = `${annee}-${String(mois).padStart(2, "0")}-15`;
   return { depart, retour: addDays(depart, f.tripDuration) };
@@ -1627,6 +1640,20 @@ function corpsDesTests(ok, out) {
 
   ok("mode flexible validé sans dates", validate({ ...base, flexibleDates: true, selectedMonths: [5], tripDuration: 7 }) === null);
   ok("mode flexible refusé sans mois", validate({ ...base, flexibleDates: true, selectedMonths: [], tripDuration: 7 }) !== null);
+
+  // Le mois est un choix exclusif : l'interface ne doit plus promettre ce que la chasse
+  // n'interroge pas. Une recherche sauvegardée avec plusieurs mois est ramenée au premier.
+  ok("un seul mois survit à l'assainissement",
+     sanitizeForm({ selectedMonths: [4, 5, 9] }).selectedMonths.length === 1
+     && sanitizeForm({ selectedMonths: [4, 5, 9] }).selectedMonths[0] === 4);
+  ok("un mois hors bornes est écarté avant d'être retenu",
+     sanitizeForm({ selectedMonths: [0, 13, 7] }).selectedMonths[0] === 7);
+  const flex = { ...base, flexibleDates: true, selectedMonths: [4], tripDuration: 7 };
+  const dFlex = datesEffectives(flex);
+  ok("la date sondée est le 15 du mois choisi",
+     /^\d{4}-04-15$/.test(dFlex.depart) && dFlex.retour === addDays(dFlex.depart, 7));
+  ok("le mois interrogé est bien celui qui est affiché",
+     datesEffectives({ ...flex, selectedMonths: [11] }).depart.slice(5, 7) === "11");
   ok("retour avant départ refusé", validate({ ...base, flexibleDates: false, departureDate: "2099-06-10", returnDate: "2099-06-02" }) !== null);
   ok("dates valides acceptées", validate({ ...base, flexibleDates: false, departureDate: "2099-06-02", returnDate: "2099-06-10" }) === null);
 
