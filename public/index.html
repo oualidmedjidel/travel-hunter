@@ -826,22 +826,6 @@ function viewForm() {
           <span class="hint">Un seul mois : c'est celui qui sera réellement interrogé chez les fournisseurs, au 15 du mois.</span>
         </div>
         <div class="field">
-          <label for="departApres">Pas de décollage avant</label>
-          <select class="input" id="departApres">
-            <option value=""${f.departApres === null ? " selected" : ""}>Peu importe</option>
-            ${[6, 7, 8, 9, 10, 12].map(h => `<option value="${h}"${f.departApres === h ? " selected" : ""}>${h} h</option>`).join("")}
-          </select>
-        </div>
-        <div class="field">
-          <label for="retourAvant">Retour posé avant</label>
-          <select class="input" id="retourAvant">
-            <option value=""${f.retourAvant === null ? " selected" : ""}>Peu importe</option>
-            ${[16, 18, 20, 21, 22, 23].map(h => `<option value="${h}"${f.retourAvant === h ? " selected" : ""}>${h} h</option>`).join("")}
-          </select>
-          <span class="hint">Le retour se juge à l'atterrissage : c'est l'heure où l'on rentre,
-            pas celle où l'on quitte la destination.</span>
-        </div>
-        <div class="field">
           <label for="tripDuration">Durée du séjour</label>
           <select class="input" id="tripDuration">
             ${[5, 7, 8, 9, 10, 12, 14, 21].map(n =>
@@ -849,6 +833,26 @@ function viewForm() {
           </select>
         </div>
       `}
+
+      <!-- Hors du ternaire : la tranche horaire vaut pour les dates précises COMME pour
+           le mode flexible. Placés dans la branche « Flexible », ces deux menus étaient
+           invisibles par défaut — défaut mesuré en production le 2026-09-24. -->
+      <div class="field" style="margin-top:.9rem">
+        <label for="departApres">Pas de décollage avant</label>
+        <select class="input" id="departApres">
+          <option value=""${f.departApres === null ? " selected" : ""}>Peu importe</option>
+          ${[6, 7, 8, 9, 10, 12].map(h => `<option value="${h}"${f.departApres === h ? " selected" : ""}>${h} h</option>`).join("")}
+        </select>
+      </div>
+      <div class="field">
+        <label for="retourAvant">Retour posé avant</label>
+        <select class="input" id="retourAvant">
+          <option value=""${f.retourAvant === null ? " selected" : ""}>Peu importe</option>
+          ${[16, 18, 20, 21, 22, 23].map(h => `<option value="${h}"${f.retourAvant === h ? " selected" : ""}>${h} h</option>`).join("")}
+        </select>
+        <span class="hint">Le retour se juge à l'atterrissage : c'est l'heure où l'on rentre,
+          pas celle où l'on quitte la destination.</span>
+      </div>
     </div>
 
     <div class="card">
@@ -2138,6 +2142,9 @@ function corpsDesTests(ok, out) {
      && sanitizeForm({ bagageSoute: true }).bagageSoute === true);
 
   // Tranche horaire — la contrainte doit atteindre l'API, pas rester dans la page.
+  // Défaut mesuré en production : les menus n'existaient que dans la branche « Flexible ».
+  ok("horaires : les deux menus existent dans le mode de dates par défaut",
+     !!document.getElementById("departApres") && !!document.getElementById("retourAvant"));
   ok("horaires : les deux bornes partent au serveur",
      fetchLiveFlights.toString().includes('q.set("depart_apres"')
      && fetchLiveFlights.toString().includes('q.set("retour_avant"'));
