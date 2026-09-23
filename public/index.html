@@ -530,7 +530,7 @@ const DEFAULTS = Object.freeze({
   destinationType: "flexible", destinations: [],
   schengenOnly: false, maxBudget: 2500,
   minStars: 4, minRating: 7.5, pension: "demi-pension",
-  maxTransfer: 60, maxBeachDistance: PLAGE_LIBRE, familyHotel: true,
+  maxTransfer: 60, maxBeachDistance: PLAGE_LIBRE, familyHotel: true, bagageSoute: false,
   preferences: ["plage", "chaleur", "beaux-paysages", "peu-touristique", "rapport-qualite-prix"]
 });
 
@@ -586,6 +586,7 @@ function sanitizeForm(raw) {
   f.maxTransfer   = clamp(int(raw.maxTransfer, f.maxTransfer), 10, 240);
   f.maxBeachDistance = clamp(int(raw.maxBeachDistance, f.maxBeachDistance), 1, PLAGE_LIBRE);
   f.familyHotel   = raw.familyHotel !== false;
+  f.bagageSoute   = raw.bagageSoute === true;
   f.preferences   = Array.isArray(raw.preferences) ? raw.preferences.filter(p => PREFS.some(x => x.id === p)) : f.preferences;
   syncAges(f);
   return f;
@@ -638,7 +639,10 @@ function priceDeal(deal, f, nights, live, sejour) {
     compagnieReelle: reel !== null && live.airline ? live.airline : null,
     departReel: reel !== null ? live.departureAt : null,
     retourReel: reel !== null ? live.returnAt : null,
-    escalesReelles: reel !== null && Number.isFinite(live.transfers) ? live.transfers : null
+    escalesReelles: reel !== null && Number.isFinite(live.transfers) ? live.transfers : null,
+    // Bagages inclus par le tarif réellement retenu. `null` quand l'amont n'a rien
+    // déclaré : la carte dira « non communiqués » plutôt que d'inventer une absence.
+    bagagesReels: reel !== null && live.bagages ? live.bagages : null
   };
 }
 
@@ -856,6 +860,12 @@ function viewForm() {
         </label>
       </div>
       <div class="field">
+        <label class="check" for="bagageSoute">
+          <input type="checkbox" id="bagageSoute"${f.bagageSoute ? " checked" : ""}>
+          <span>🧳 Bagage en soute inclus</span>
+        </label>
+        <span class="hint">Change le vol retenu, pas seulement l'affichage : on garde le moins cher
+          qui inclut la soute. Duffel ne donne pas le prix d'un bagage acheté à part.</span>
         <label class="check" for="familyHotel">
           <input type="checkbox" id="familyHotel"${f.familyHotel ? " checked" : ""}>
           <span>👨‍👩‍👧 Hôtel adapté aux familles</span>
@@ -1053,6 +1063,19 @@ const SOURCES = [
 ];
 
 /**
+ * Ce que le tarif inclut, en une ligne. Trois états, et le troisième compte autant que
+ * les deux autres : quand l'amont ne déclare rien, on le dit — « non communiqués » n'est
+ * pas « aucun bagage ».
+ */
+function texteBagages(b) {
+  if (!b || (b.soute === null && b.cabine === null)) return "bagages non communiqués";
+  const morceaux = [];
+  if (b.soute !== null) morceaux.push(b.soute > 0 ? `${b.soute} en soute` : "pas de soute");
+  if (b.cabine !== null) morceaux.push(b.cabine > 0 ? `${b.cabine} en cabine` : "pas de cabine");
+  return morceaux.join(" · ");
+}
+
+/**
  * Badge du composant vol. « Réel » est réservé à un tarif que le voyageur peut
  * réellement payer.
  *
@@ -1231,6 +1254,8 @@ function dealCard(r, i, f) {
         <span class="spec__v">${esc(r.hotelNom || (r.hotelReel ? "Établissement non communiqué" : r.hotel))}<small>${esc(detailHotel(r))}</small></span></div>
       <div class="spec"><span aria-hidden="true">🏖️</span><span class="spec__k">Plage</span>
         <span class="spec__v num">${r.beachKm < 1 ? Math.round(r.beachKm * 1000) + " m" : r.beachKm + " km"}</span></div>
+      <div class="spec"><span aria-hidden="true">🧳</span><span class="spec__k">Bagages</span>
+        <span class="spec__v">${esc(texteBagages(r.bagagesReels))}<small>${r.bagagesReels ? "inclus dans ce tarif" : "aucune déclaration de la source"}</small></span></div>
       <div class="spec"><span aria-hidden="true">🚕</span><span class="spec__k">Transfert</span>
         <span class="spec__v num">${r.transferMin} min</span></div>
     </div>
@@ -1364,6 +1389,7 @@ function attach() {
   on("pension", "change", e => { f.pension = Object.hasOwn(PENSIONS, e.target.value) ? e.target.value : DEFAULTS.pension; render(); });
   on("schengenOnly", "change", e => { f.schengenOnly = e.target.checked; render(); });
   on("familyHotel", "change", e => { f.familyHotel = e.target.checked; render(); });
+  on("bagageSoute", "change", e => { f.bagageSoute = e.target.checked; render(); });
 
   /* sliders : retour visuel immédiat, rendu complet au relâchement */
   const live = (id, outId, fmt, set) => {
@@ -1451,6 +1477,9 @@ async function fetchLiveFlights(f) {
   if (f.childrenAges.length) q.set("children_ages", f.childrenAges.join(","));
   if (f.babiesAges.length) q.set("infants_ages_months", f.babiesAges.join(","));
   if (retour) q.set("return_date", retour);
+  // Exiger la soute change le tarif RETENU, pas seulement l'affichage : c'est le vol le
+  // moins cher qui l'inclut qui remonte.
+  if (f.bagageSoute) q.set("bagage_soute", "1");
 
   try {
     const res = await fetch(`/api/flights?${q}`, { signal: AbortSignal.timeout(30000) });
@@ -2054,6 +2083,29 @@ function corpsDesTests(ok, out) {
      viewResults.toString().includes("messageVeille()") && viewVeilles.toString().includes("messageVeille()"));
   ok("veille : un écart positif est rendu en pourcentage",
      ecartTexte({ actuel: 336, meilleur: 300, ecart: 12, releves: 4 }) === "12 % au-dessus du meilleur vu");
+
+  // Bagages — ce que le tarif inclut, et surtout le cas « la source n'a rien dit ».
+  ok("bagages : une soute et une cabine se lisent",
+     texteBagages({ soute: 1, cabine: 1 }) === "1 en soute · 1 en cabine");
+  ok("bagages : l'absence de soute est nommée, pas tue",
+     texteBagages({ soute: 0, cabine: 1 }) === "pas de soute · 1 en cabine");
+  ok("bagages : sans déclaration, on le dit au lieu d'inventer une absence",
+     texteBagages(null) === "bagages non communiqués"
+     && texteBagages({ soute: null, cabine: null }) === "bagages non communiqués");
+  ok("bagages : une seule information déclarée suffit",
+     texteBagages({ soute: 2, cabine: null }) === "2 en soute");
+  // Le tarif de démonstration n'a pas de bagages : la carte ne doit pas en inventer.
+  ok("bagages : un séjour modélisé n'annonce aucun bagage inclus",
+     priceDeal(d, base, 7, null).bagagesReels === null);
+  ok("bagages : un tarif réel remonte ce que la source a déclaré",
+     priceDeal(d, base, 7, { total: 300, airline: "X", bagages: { soute: 1, cabine: 1 } })
+       .bagagesReels.soute === 1);
+  // La case à cocher doit atteindre l'API : sans ça, elle ne changerait que l'affichage.
+  ok("bagages : la case envoie bien bagage_soute au serveur",
+     fetchLiveFlights.toString().includes('q.set("bagage_soute"'));
+  ok("bagages : la case est assainie comme un booléen",
+     sanitizeForm({ bagageSoute: "oui" }).bagageSoute === false
+     && sanitizeForm({ bagageSoute: true }).bagageSoute === true);
 
   // Alertes — la clé publique VAPID arrive en base64url et doit devenir des octets.
   ok("clé publique : 65 octets, point non compressé",

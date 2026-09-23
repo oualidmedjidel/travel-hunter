@@ -65,8 +65,52 @@ export function passagers(adults, agesEnfants, agesBebesMois) {
   return out;
 }
 
-/** Offre la moins chère d'une réponse Duffel. null si la route ne renvoie rien. */
-export function meilleureOffre(payload, destination) {
+/**
+ * Bagages **inclus** dans une offre, en nombre de pièces par voyageur.
+ *
+ * Mesuré sur une vraie réponse Duffel (19 offres, 2026-09-23) : l'allocation est déclarée
+ * par passager ET par segment, sous `passengers[].baggages = [{type, quantity}]`, avec
+ * `type` valant `checked` ou `carry_on`. Elle varie d'une offre à l'autre — 14 offres sur
+ * 19 incluaient une soute, 5 aucune.
+ *
+ * On retient le **minimum sur tous les segments et tous les passagers** : c'est la
+ * contrainte qui s'applique réellement au voyage. Une soute à l'aller mais pas au retour
+ * n'est pas « une soute incluse ».
+ *
+ * ⚠️ Ce que Duffel ne donne PAS : le prix d'un bagage supplémentaire. `available_services`
+ * était `null` sur les 19 offres, même en demandant `return_available_services=true`.
+ * On ne chiffre donc aucun bagage payant — ce serait inventer un prix.
+ */
+export function bagagesInclus(offre) {
+  const slices = Array.isArray(offre && offre.slices) ? offre.slices : [];
+  let soute = null, cabine = null;
+  for (const s of slices) {
+    for (const seg of (Array.isArray(s.segments) ? s.segments : [])) {
+      for (const pax of (Array.isArray(seg.passengers) ? seg.passengers : [])) {
+        let pSoute = 0, pCabine = 0;
+        for (const b of (Array.isArray(pax.baggages) ? pax.baggages : [])) {
+          const q = Number.isFinite(b && b.quantity) ? b.quantity : 0;
+          if (b && b.type === "checked") pSoute += q;
+          if (b && b.type === "carry_on") pCabine += q;
+        }
+        soute = soute === null ? pSoute : Math.min(soute, pSoute);
+        cabine = cabine === null ? pCabine : Math.min(cabine, pCabine);
+      }
+    }
+  }
+  // null, et non 0, quand l'amont n'a rien déclaré : « on ne sait pas » n'est pas « rien ».
+  return { soute, cabine };
+}
+
+/**
+ * Offre la moins chère d'une réponse Duffel. null si la route ne renvoie rien.
+ *
+ * `souteMin` écarte les tarifs qui n'incluent pas assez de bagages en soute : pour une
+ * famille, le vol à 200 € sans soute n'est pas moins cher que celui à 260 € avec, il est
+ * juste incomparable. Une offre dont l'amont ne déclare rien n'est jamais écartée — on ne
+ * punit pas un tarif pour un silence de la source.
+ */
+export function meilleureOffre(payload, destination, { souteMin = 0 } = {}) {
   const offres = payload && payload.data && Array.isArray(payload.data.offers) ? payload.data.offers : [];
   let best = null;
 
@@ -75,6 +119,9 @@ export function meilleureOffre(payload, destination) {
     const total = Number.parseFloat(o && o.total_amount);
     if (!Number.isFinite(total) || total <= 0) continue;
     if (best && total >= best.total) continue;
+
+    const bagages = bagagesInclus(o);
+    if (souteMin > 0 && bagages.soute !== null && bagages.soute < souteMin) continue;
 
     const slices = Array.isArray(o.slices) ? o.slices : [];
     const aller = slices[0] && Array.isArray(slices[0].segments) ? slices[0].segments : [];
@@ -93,6 +140,7 @@ export function meilleureOffre(payload, destination) {
       departureAt: s0 && typeof s0.departing_at === "string" ? s0.departing_at : null,
       returnAt: retour[0] && typeof retour[0].departing_at === "string" ? retour[0].departing_at : null,
       transfers: Math.max(0, aller.length - 1) + Math.max(0, retour.length - 1),
+      bagages,                                   // { soute, cabine } — inclus, jamais un prix
       expiresAt: typeof o.expires_at === "string" ? o.expires_at : null
     };
   }
@@ -118,6 +166,8 @@ export default async (req) => {
   const adults = Number.parseInt(url.searchParams.get("adults") || "1", 10);
   const agesEnfants = entiers(url.searchParams.get("children_ages"), 2, 17);
   const agesBebes = entiers(url.searchParams.get("infants_ages_months"), 0, 23);
+  // 0 = peu importe. Au-delà, on ne garde que les tarifs qui incluent la soute.
+  const souteMin = Math.min(2, Math.max(0, Number.parseInt(url.searchParams.get("bagage_soute") || "0", 10) || 0));
   const destinations = [...new Set(
     String(url.searchParams.get("destinations") || "").toUpperCase().split(",").map(d => d.trim()).filter(Boolean)
   )];
@@ -145,7 +195,7 @@ export default async (req) => {
   const echecs = [];
 
   const { resultats, abandonnees } = await parLots(destinations.map(dest => async () => {
-    const cle = `${signature}|${dest}`;
+    const cle = `${signature}|${souteMin}|${dest}`;   // le filtre fait partie de la clé de cache
     const hit = cache.lire(cle);
     // Une offre encore en cache mais périmée est rejetée : on redemande à l'amont.
     if (hit !== undefined && !perimee(hit)) return hit;
@@ -173,7 +223,7 @@ export default async (req) => {
       // Le corps amont ne sort qu'expurgé et borné par motifEchec (duffel.mjs) — jamais tel quel.
       if (!res.ok) { echecs.push({ destination: dest, ...(await motifEchec(res)) }); return null; }
 
-      const offre = meilleureOffre(await res.json(), dest);
+      const offre = meilleureOffre(await res.json(), dest, { souteMin });
       cache.ecrire(cle, offre);
       return offre;
     } catch (e) {
@@ -189,6 +239,7 @@ export default async (req) => {
     configured: true,
     mode: token.startsWith("duffel_test_") ? "test" : "live",
     origin,
+    souteMin,
     demandees: destinations.length,
     trouvees: flights.length,
     abandonnees,                               // lots non lancés faute de temps
