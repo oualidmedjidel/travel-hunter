@@ -103,16 +103,21 @@ export function bagagesInclus(offre) {
 }
 
 /**
- * Heure locale d'un horodatage Duffel, en heures pleines.
+ * Heure locale d'un horodatage Duffel, **en minutes depuis minuit**.
  *
- * Duffel rend `2026-11-05T09:55:00` — **sans fuseau** : c'est déjà l'heure locale de
- * l'aéroport, la seule qui intéresse un voyageur. On lit donc les deux chiffres du
- * champ au lieu de passer par `Date`, qui les réinterpréterait dans le fuseau du
- * serveur et décalerait un vol de Marrakech ou de Djerba.
+ * Duffel rend `2026-11-05T09:55:00` — sans fuseau : c'est déjà l'heure locale de
+ * l'aéroport, la seule qui intéresse un voyageur. On lit donc les chiffres du champ au
+ * lieu de passer par `Date`, qui les réinterpréterait dans le fuseau du serveur et
+ * décalerait un vol de Marrakech ou de Djerba.
+ *
+ * ⚠️ Les minutes comptent, et pas pour la beauté du geste : mesuré en production le
+ * 2026-09-23, une comparaison en heures pleines laissait passer un atterrissage à
+ * **20 h 35** sous la contrainte « retour posé avant 20 h ». L'étiquette mentait d'une
+ * demi-heure.
  */
-export function heureLocale(iso) {
-  const m = /T(\d{2}):/.exec(String(iso || ""));
-  return m ? Number.parseInt(m[1], 10) : null;
+export function minutesLocales(iso) {
+  const m = /T(\d{2}):(\d{2})/.exec(String(iso || ""));
+  return m ? Number.parseInt(m[1], 10) * 60 + Number.parseInt(m[2], 10) : null;
 }
 
 /**
@@ -144,11 +149,13 @@ export function meilleureOffre(payload, destination, { souteMin = 0, departApres
     // sur l'ATTERRISSAGE du retour — c'est l'heure où l'on rentre chez soi qui compte,
     // pas celle où l'on quitte la destination. Un horaire non déclaré ne fait jamais
     // écarter une offre : on n'invente pas une contrainte sur un silence.
-    const hDepart = heureLocale(aller[0] && aller[0].departing_at);
+    const mDepart = minutesLocales(aller[0] && aller[0].departing_at);
     const dernierRetour = retour.length ? retour[retour.length - 1] : null;
-    const hRetour = heureLocale(dernierRetour && (dernierRetour.arriving_at || dernierRetour.departing_at));
-    if (departApres !== null && hDepart !== null && hDepart < departApres) continue;
-    if (retourAvant !== null && hRetour !== null && hRetour > retourAvant) continue;
+    const mRetour = minutesLocales(dernierRetour && (dernierRetour.arriving_at || dernierRetour.departing_at));
+    // Les bornes sont exprimées en heures pleines et comparées à la minute : « pas avant
+    // 8 h » accepte 8 h 00, « posé avant 20 h » refuse 20 h 01.
+    if (departApres !== null && mDepart !== null && mDepart < departApres * 60) continue;
+    if (retourAvant !== null && mRetour !== null && mRetour > retourAvant * 60) continue;
     const s0 = aller[0] || null;
     const porteur = (o.owner && typeof o.owner.name === "string" && o.owner.name)
       || (s0 && s0.operating_carrier && s0.operating_carrier.name)
