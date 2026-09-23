@@ -51,6 +51,7 @@ npm test                                 314/314 OK · 40/40 OK
 ```
 GET /api/flights?origin=PAR&destinations=RAK,LIS&depart_date=2026-11-05
                 &return_date=2026-11-13&adults=2&children_ages=3&infants_ages_months=10
+                &bagage_soute=1
 GET /api/stays?lieux=RAK:31.6295,-7.9811&check_in=2026-11-05&check_out=2026-11-13
               &adults=2&pension=demi-pension
 ```
@@ -60,6 +61,14 @@ GET /api/stays?lieux=RAK:31.6295,-7.9811&check_in=2026-11-05&check_out=2026-11-1
   `YYYY-MM-DD` strictes, 12 destinations ou lieux par appel, 9 voyageurs assis, au moins un
   adulte par bébé. Rien n'est recopié tel quel.
 - Duffel tarife d'après les **âges réels** des mineurs, pas des compteurs.
+- `bagage_soute=1` ne filtre pas l'affichage : il change le **tarif retenu**, en gardant le
+  moins cher **qui inclut** la soute. Chaque vol renvoie `bagages: {soute, cabine}` — ce que
+  le tarif inclut, minimum pris sur tous les segments. `null` quand la source ne déclare
+  rien : « on ne sait pas » n'est pas « rien ».
+- ⚠️ **Le prix d'un bagage acheté à part n'est pas disponible.** Mesuré le 2026-09-23 sur
+  19 offres réelles : `available_services` valait `null` sur les 19, y compris avec
+  `return_available_services=true`. Aucun « +25 € la valise » n'est donc affiché — ce serait
+  un prix inventé.
 - Erreur amont → **200**, destination listée dans `sansOffre` : `{status, type, code, titre}`
   quand l'amont parle la forme Duffel, sinon un `extrait` du corps borné à 160 caractères.
   Cet extrait passe par `expurge` : toute suite de 16 caractères ou plus sans séparateur
