@@ -30,7 +30,7 @@
  * Sans jeton : 200 { configured:false } → la page bascule en démonstration.
  */
 
-import { API, IATA, jourValide, json, jeton, entetes, empreinteJeton, parLots, creerCache, entiers, motifEchec }
+import { API, IATA, jourValide, json, jeton, entetes, empreinteJeton, parLots, creerCache, CACHE_MS, entiers, motifEchec }
   from "../lib/duffel.mjs";
 
 const ROUTE = `${API}/air/offer_requests`;
@@ -40,7 +40,7 @@ const CONCURRENCE = 6;
 // Plutôt que de tout perdre, on arrête de lancer de nouveaux lots passé ce délai et
 // on renvoie ce qui est déjà remonté : une réponse partielle vaut mieux qu'un 502.
 const BUDGET_MS = 18000;
-const cache = creerCache(15 * 60 * 1000, 300);
+const cache = creerCache(CACHE_MS, 300);
 
 /**
  * Une offre Duffel porte sa propre date de péremption, et elle est plus courte que le cache.

@@ -37,7 +37,7 @@
  *                                  cheapest_rate_currency, accommodation:{…} } ] } }
  */
 
-import { API, jourValide, nuitsEntre, json, jeton, entetes, empreinteJeton, parLots, creerCache, entiers, motifEchec }
+import { API, jourValide, nuitsEntre, json, jeton, entetes, empreinteJeton, parLots, creerCache, CACHE_MS, entiers, motifEchec }
   from "../lib/duffel.mjs";
 
 const LITEAPI = "https://api.liteapi.travel/v3.0/hotels/rates";
@@ -47,7 +47,7 @@ const BUDGET_MS = 18000;
 const RAYON_M = 12000;        // 12 km : couvre une ville et sa côte
 const MAX_NUITS = 60;         // au-delà, ce n'est plus un séjour : la page borne déjà à 60
 const NATIONALITE = "FR";
-const cache = creerCache(15 * 60 * 1000, 300);
+const cache = creerCache(CACHE_MS, 300);
 
 /** Codes de pension LiteAPI → valeurs du formulaire. */
 export const PENSIONS_LITE = {

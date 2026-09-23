@@ -123,6 +123,19 @@ export async function parLots(taches, taille, budgetMs = Infinity) {
   return { resultats, abandonnees };
 }
 
+/**
+ * Durée de vie du cache mémoire, la même pour les deux proxys.
+ *
+ * Passée de 15 min à 1 h le 2026-09-23 : un comparateur émet beaucoup de recherches pour
+ * zéro réservation, et les fournisseurs conditionnent leur gratuité à ce rapport. Quatre
+ * fois moins d'appels amont pour le même service rendu.
+ *
+ * Ce que ça coûte : un tarif hôtelier peut avoir jusqu'à une heure. Côté vols, rien —
+ * `perimee()` écarte déjà du cache toute offre dont Duffel a annoncé l'expiration, et
+ * les offres expirent bien avant une heure.
+ */
+export const CACHE_MS = 60 * 60 * 1000;
+
 /** Cache mémoire borné, par instance de fonction. */
 export function creerCache(ttlMs, maxEntrees) {
   const m = new Map();
