@@ -103,6 +103,19 @@ export function bagagesInclus(offre) {
 }
 
 /**
+ * Heure locale d'un horodatage Duffel, en heures pleines.
+ *
+ * Duffel rend `2026-11-05T09:55:00` — **sans fuseau** : c'est déjà l'heure locale de
+ * l'aéroport, la seule qui intéresse un voyageur. On lit donc les deux chiffres du
+ * champ au lieu de passer par `Date`, qui les réinterpréterait dans le fuseau du
+ * serveur et décalerait un vol de Marrakech ou de Djerba.
+ */
+export function heureLocale(iso) {
+  const m = /T(\d{2}):/.exec(String(iso || ""));
+  return m ? Number.parseInt(m[1], 10) : null;
+}
+
+/**
  * Offre la moins chère d'une réponse Duffel. null si la route ne renvoie rien.
  *
  * `souteMin` écarte les tarifs qui n'incluent pas assez de bagages en soute : pour une
@@ -110,7 +123,7 @@ export function bagagesInclus(offre) {
  * juste incomparable. Une offre dont l'amont ne déclare rien n'est jamais écartée — on ne
  * punit pas un tarif pour un silence de la source.
  */
-export function meilleureOffre(payload, destination, { souteMin = 0 } = {}) {
+export function meilleureOffre(payload, destination, { souteMin = 0, departApres = null, retourAvant = null } = {}) {
   const offres = payload && payload.data && Array.isArray(payload.data.offers) ? payload.data.offers : [];
   let best = null;
 
@@ -126,6 +139,16 @@ export function meilleureOffre(payload, destination, { souteMin = 0 } = {}) {
     const slices = Array.isArray(o.slices) ? o.slices : [];
     const aller = slices[0] && Array.isArray(slices[0].segments) ? slices[0].segments : [];
     const retour = slices[1] && Array.isArray(slices[1].segments) ? slices[1].segments : [];
+
+    // Tranche horaire. `departApres` porte sur le décollage de l'aller ; `retourAvant`
+    // sur l'ATTERRISSAGE du retour — c'est l'heure où l'on rentre chez soi qui compte,
+    // pas celle où l'on quitte la destination. Un horaire non déclaré ne fait jamais
+    // écarter une offre : on n'invente pas une contrainte sur un silence.
+    const hDepart = heureLocale(aller[0] && aller[0].departing_at);
+    const dernierRetour = retour.length ? retour[retour.length - 1] : null;
+    const hRetour = heureLocale(dernierRetour && (dernierRetour.arriving_at || dernierRetour.departing_at));
+    if (departApres !== null && hDepart !== null && hDepart < departApres) continue;
+    if (retourAvant !== null && hRetour !== null && hRetour > retourAvant) continue;
     const s0 = aller[0] || null;
     const porteur = (o.owner && typeof o.owner.name === "string" && o.owner.name)
       || (s0 && s0.operating_carrier && s0.operating_carrier.name)
@@ -140,6 +163,7 @@ export function meilleureOffre(payload, destination, { souteMin = 0 } = {}) {
       departureAt: s0 && typeof s0.departing_at === "string" ? s0.departing_at : null,
       returnAt: retour[0] && typeof retour[0].departing_at === "string" ? retour[0].departing_at : null,
       transfers: Math.max(0, aller.length - 1) + Math.max(0, retour.length - 1),
+      arriveeRetourAt: dernierRetour && typeof dernierRetour.arriving_at === "string" ? dernierRetour.arriving_at : null,
       bagages,                                   // { soute, cabine } — inclus, jamais un prix
       expiresAt: typeof o.expires_at === "string" ? o.expires_at : null
     };
@@ -168,6 +192,15 @@ export default async (req) => {
   const agesBebes = entiers(url.searchParams.get("infants_ages_months"), 0, 23);
   // 0 = peu importe. Au-delà, on ne garde que les tarifs qui incluent la soute.
   const souteMin = Math.min(2, Math.max(0, Number.parseInt(url.searchParams.get("bagage_soute") || "0", 10) || 0));
+  // Heures pleines, 0 à 23. Absent = aucune contrainte, et c'est le cas par défaut.
+  const heure = (nom) => {
+    const brut = url.searchParams.get(nom);
+    if (brut === null || brut === "") return null;
+    const h = Number.parseInt(brut, 10);
+    return Number.isInteger(h) && h >= 0 && h <= 23 ? h : null;
+  };
+  const departApres = heure("depart_apres");
+  const retourAvant = heure("retour_avant");
   const destinations = [...new Set(
     String(url.searchParams.get("destinations") || "").toUpperCase().split(",").map(d => d.trim()).filter(Boolean)
   )];
@@ -195,7 +228,9 @@ export default async (req) => {
   const echecs = [];
 
   const { resultats, abandonnees } = await parLots(destinations.map(dest => async () => {
-    const cle = `${signature}|${souteMin}|${dest}`;   // le filtre fait partie de la clé de cache
+    // Tous les filtres entrent dans la clé : deux recherches aux contraintes différentes
+    // ne doivent jamais se resservir le même résultat.
+    const cle = `${signature}|${souteMin}|${departApres}|${retourAvant}|${dest}`;
     const hit = cache.lire(cle);
     // Une offre encore en cache mais périmée est rejetée : on redemande à l'amont.
     if (hit !== undefined && !perimee(hit)) return hit;
@@ -223,7 +258,7 @@ export default async (req) => {
       // Le corps amont ne sort qu'expurgé et borné par motifEchec (duffel.mjs) — jamais tel quel.
       if (!res.ok) { echecs.push({ destination: dest, ...(await motifEchec(res)) }); return null; }
 
-      const offre = meilleureOffre(await res.json(), dest, { souteMin });
+      const offre = meilleureOffre(await res.json(), dest, { souteMin, departApres, retourAvant });
       cache.ecrire(cle, offre);
       return offre;
     } catch (e) {
@@ -240,6 +275,8 @@ export default async (req) => {
     mode: token.startsWith("duffel_test_") ? "test" : "live",
     origin,
     souteMin,
+    departApres,
+    retourAvant,
     demandees: destinations.length,
     trouvees: flights.length,
     abandonnees,                               // lots non lancés faute de temps
