@@ -1003,7 +1003,8 @@ function viewResults() {
       <h1>${rows.length} séjour${rows.length > 1 ? "s" : ""} sous ${eur(f.maxBudget)}</h1>
       <p>${esc(period)} · au départ de ${esc(f.origin)} · ${f.adults} adulte${f.adults > 1 ? "s" : ""}${f.children ? `, ${f.children} enfant${f.children > 1 ? "s" : ""}` : ""}${f.babies ? `, ${f.babies} bébé${f.babies > 1 ? "s" : ""}` : ""} · ${esc(PENSIONS[f.pension].label)}</p>
     </section>
-    ${bandeau}`;
+    ${bandeau}
+    ${messageVeille()}`;
 
   if (!rows.length) {
     return head + `<div class="empty">
@@ -1699,6 +1700,21 @@ async function ouvrirVeilles() {
   render();
 }
 
+/**
+ * Retour des actions de veille, affiché dans TOUTES les vues qui les déclenchent.
+ *
+ * Il ne vivait que dans l'écran « Mes veilles ». Depuis les résultats, appuyer sur
+ * « Surveiller » créait bien la veille côté serveur et n'affichait rien : du point de vue
+ * de qui appuie, le bouton était mort. Une action sans retour visible n'est pas une
+ * action, c'est un doute.
+ */
+function messageVeille() {
+  if (!state.veilleMsg) return "";
+  const versVeilles = state.view === "veilles" ? ""
+    : ` <button type="button" class="chip" onclick="ouvrirVeilles()">Voir mes veilles</button>`;
+  return `<div class="alert alert--info"><span>💬</span><div>${esc(state.veilleMsg)}${versVeilles}</div></div>`;
+}
+
 /** « 12 % au-dessus du meilleur prix vu » — ou rien tant qu'un seul relevé existe. */
 function ecartTexte(d) {
   if (d.actuel === null || d.meilleur === null) return "en attente du premier relevé";
@@ -1732,9 +1748,9 @@ function viewVeilles() {
       notifications poussées. La veille fonctionne quand même, il faut ouvrir cette page pour voir l'écart.</div></div>`
   }[state.alertes] || "";
 
-  if (v === null) return entete + alertes + `<p class="footnote">Chargement…</p>`;
+  if (v === null) return entete + alertes + messageVeille() + `<p class="footnote">Chargement…</p>`;
   if (!v.length) {
-    return entete + alertes + `<div class="alert alert--info"><span>🔭</span><div>Aucune veille pour
+    return entete + alertes + messageVeille() + `<div class="alert alert--info"><span>🔭</span><div>Aucune veille pour
       l'instant. Lance une chasse, puis « Surveiller cette recherche ».</div></div>`;
   }
 
@@ -1756,9 +1772,7 @@ function viewVeilles() {
     </article>`;
   }).join("");
 
-  return entete + alertes
-    + (state.veilleMsg ? `<div class="alert alert--info"><span>💬</span><div>${esc(state.veilleMsg)}</div></div>` : "")
-    + `<div class="deals">${cartes}</div>`;
+  return entete + alertes + messageVeille() + `<div class="deals">${cartes}</div>`;
 }
 
 /* ==================== ACTIONS ==================== */
@@ -2027,6 +2041,17 @@ function corpsDesTests(ok, out) {
      ecartTexte({ actuel: null, meilleur: null, ecart: null, releves: 0 }) === "en attente du premier relevé");
   ok("veille : au meilleur prix vu, l'écart est nommé tel quel",
      ecartTexte({ actuel: 300, meilleur: 300, ecart: 0, releves: 4 }) === "au meilleur prix vu");
+  // Le retour d'une action de veille doit être visible depuis l'écran où on l'a déclenchée.
+  // Il ne vivait que dans « Mes veilles » : depuis les résultats, le bouton semblait mort.
+  ok("veille : le message de retour est rendu quand il existe",
+     (() => { const avant = state.veilleMsg; state.veilleMsg = "essai de retour";
+              const html = messageVeille(); state.veilleMsg = avant;
+              return html.includes("essai de retour"); })());
+  ok("veille : aucun bandeau quand il n'y a rien à dire",
+     (() => { const avant = state.veilleMsg; state.veilleMsg = null;
+              const html = messageVeille(); state.veilleMsg = avant; return html === ""; })());
+  ok("veille : les deux vues qui déclenchent une action affichent ce retour",
+     viewResults.toString().includes("messageVeille()") && viewVeilles.toString().includes("messageVeille()"));
   ok("veille : un écart positif est rendu en pourcentage",
      ecartTexte({ actuel: 336, meilleur: 300, ecart: 12, releves: 4 }) === "12 % au-dessus du meilleur vu");
 
