@@ -14,6 +14,7 @@
 import { json } from "../lib/duffel.mjs";
 import { ajouter, supprimer, lesSiennes, resume, MAX_VEILLES_PAR_PROPRIETAIRE,
          vapid, abonner, desabonner, proprietaireDeLAbonnement, derniereAlerteDe } from "../lib/veille.mjs";
+import { envoyerEssai } from "../lib/releve.mjs";
 
 /** Forme imposée au propriétaire : assez long pour ne pas se deviner par hasard. */
 const PROPRIETAIRE = /^[A-Za-z0-9_-]{12,64}$/;
@@ -73,6 +74,12 @@ export default async (req) => {
       return json(r, 201);
     }
 
+    if (corps.action === "tester") {
+      const r = await envoyerEssai(proprietaire);
+      if (r.erreur) return json({ error: r.erreur }, 429);
+      return json(r);
+    }
+
     if (corps.action === "desabonner") {
       const e = String(corps.endpoint || "");
       if (!e) return json({ error: "endpoint manquant." }, 400);
@@ -85,7 +92,7 @@ export default async (req) => {
       return json(r);
     }
 
-    return json({ error: "action inconnue : ajouter, supprimer, abonner ou desabonner." }, 400);
+    return json({ error: "action inconnue : ajouter, supprimer, abonner, desabonner ou tester." }, 400);
   }
 
   return json({ error: "méthode non gérée." }, 405);

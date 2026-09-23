@@ -7,7 +7,7 @@
  *
  * Ici : network-first pour les navigations (HTML), cache-first pour le reste.
  */
-const CACHE = "tdh-v5";   // v4 → v5 : le service worker gagne le push, les anciens caches partent
+const CACHE = "tdh-v6";   // v4 → v5 : le service worker gagne le push, les anciens caches partent
 
 /**
  * Ce qui mérite d'entrer en cache. La version précédente mettait en cache la réponse de
@@ -54,7 +54,10 @@ self.addEventListener("push", e => {
           body: JSON.stringify({ endpoint: abonnement.endpoint })
         });
         const d = await r.json();
-        if (d && d.alerte) {
+        if (d && d.alerte && d.alerte.essai) {
+          titre = "Essai réussi";
+          corps = "Les alertes fonctionnent sur cet appareil. Tu seras prévenu au prochain record de prix.";
+        } else if (d && d.alerte) {
           const a = d.alerte;
           titre = `${a.code} : ${Math.round(a.nouveau)} € — nouveau meilleur prix`;
           corps = `${a.baisse} % sous le meilleur prix déjà vu (${Math.round(a.ancien)} €)`

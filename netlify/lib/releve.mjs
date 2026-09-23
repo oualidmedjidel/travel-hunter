@@ -10,7 +10,8 @@
  */
 import vols from "../functions/flights.mjs";
 import sejours from "../functions/stays.mjs";
-import { lire, enregistrerReleve, cheminFichier, abonnementsDe, desabonner, noterAlerte, vapid } from "./veille.mjs";
+import { lire, enregistrerReleve, cheminFichier, abonnementsDe, desabonner, noterAlerte,
+         noterEssai, vapid } from "./veille.mjs";
 import { reveiller } from "./push.mjs";
 
 /** Une Request locale : l'origine n'a aucune importance, seul le chemin est lu. */
@@ -59,6 +60,29 @@ export async function alerter(veille, records, { envoi = reveiller, clefs = vapi
 
   const abonnements = await abonnementsDe(veille.proprietaire);
   if (!abonnements.length) return { envoyees: 0, sansAbonnement: true };
+
+  const v = await clefs();
+  let envoyees = 0;
+  for (const a of abonnements) {
+    const r = await envoi(v, a);
+    if (r.ok) envoyees++;
+    if (r.perime) await desabonner(a.endpoint);
+  }
+  return { envoyees, tentees: abonnements.length };
+}
+
+/**
+ * Envoi d'essai, déclenché par l'utilisateur depuis la page. Même chemin exactement que
+ * l'alerte réelle — même jeton, même réveil sans charge utile, même oubli des
+ * abonnements périmés. Un bouton d'essai qui emprunterait un autre chemin ne prouverait
+ * rien sur le vrai.
+ */
+export async function envoyerEssai(proprietaire, { envoi = reveiller, clefs = vapid, maintenant } = {}) {
+  const note = await noterEssai(proprietaire, maintenant ? { maintenant } : {});
+  if (note.erreur) return { erreur: note.erreur };
+
+  const abonnements = await abonnementsDe(proprietaire);
+  if (!abonnements.length) return { envoyees: 0, tentees: 0, sansAbonnement: true };
 
   const v = await clefs();
   let envoyees = 0;

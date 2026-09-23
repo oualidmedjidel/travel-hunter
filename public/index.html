@@ -1650,6 +1650,31 @@ async function activerAlertes() {
   render();
 }
 
+/**
+ * Envoi d'essai : la seule façon de voir la chaîne complète sans attendre un record.
+ * Le serveur emprunte exactement le chemin d'une vraie alerte — si l'essai arrive, une
+ * alerte arrivera.
+ */
+async function testerAlerte() {
+  const id = proprietaire();
+  if (!id) return;
+  state.veilleMsg = "Envoi d'un essai…"; render();
+  try {
+    const r = await fetch("/api/veille", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "tester", proprietaire: id })
+    });
+    const d = await r.json();
+    state.veilleMsg = r.ok
+      ? (d.sansAbonnement
+          ? "Aucun appareil abonné : active d'abord les alertes."
+          : `Essai envoyé à ${d.envoyees} appareil${d.envoyees > 1 ? "s" : ""} sur ${d.tentees}. `
+            + "La notification peut mettre quelques secondes.")
+      : (d.error || `Refusé (${r.status}).`);
+  } catch { state.veilleMsg = "Le serveur n'a pas répondu."; }
+  render();
+}
+
 async function couperAlertes() {
   try {
     const reg = await navigator.serviceWorker.ready;
@@ -1697,6 +1722,7 @@ function viewVeilles() {
   const alertes = {
     actives: `<div class="alert alert--info"><span>🔔</span><div><b>Alertes actives sur cet appareil.</b>
       Tu seras prévenu quand un vol passe sous son meilleur prix connu.
+      <button type="button" class="chip" onclick="testerAlerte()">Tester l'alerte</button>
       <button type="button" class="chip" onclick="couperAlertes()">Couper</button></div></div>`,
     inactives: `<div class="alert alert--info"><span>🔕</span><div>Les alertes sont éteintes sur cet appareil.
       <button type="button" class="chip" onclick="activerAlertes()">Activer les alertes</button></div></div>`,

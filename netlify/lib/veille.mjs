@@ -222,6 +222,25 @@ export async function enregistrerReleve(id, releve, chemin = cheminFichier()) {
   return { releves: v.releves.length };
 }
 
+export const DELAI_ESSAI_MS = 60_000;   // un essai par minute : de quoi vérifier, pas de quoi marteler
+
+/**
+ * Alerte d'essai, rattachée au propriétaire et non à une veille : on doit pouvoir
+ * vérifier que les notifications marchent **avant** d'avoir mis quoi que ce soit sous
+ * surveillance. Rend `{ erreur }` si l'essai précédent date de moins d'une minute.
+ */
+export async function noterEssai(proprietaire, { maintenant = Date.now() } = {}, chemin = cheminFichier()) {
+  const d = await lire(chemin);
+  d.essais = d.essais && typeof d.essais === "object" ? d.essais : {};
+  const precedent = d.essais[proprietaire];
+  if (precedent && maintenant - Date.parse(precedent.t) < DELAI_ESSAI_MS) {
+    return { erreur: "un essai vient d'être envoyé ; laisse-lui une minute" };
+  }
+  d.essais[proprietaire] = { t: new Date(maintenant).toISOString(), essai: true, nom: "Essai d'alerte" };
+  await ecrire(d, chemin);
+  return d.essais[proprietaire];
+}
+
 /** Garde la trace de la dernière alerte envoyée : c'est ce que le service worker affichera. */
 export async function noterAlerte(id, alerte, chemin = cheminFichier()) {
   const d = await lire(chemin);
@@ -242,9 +261,15 @@ export async function noterAlerte(id, alerte, chemin = cheminFichier()) {
 export async function derniereAlerteDe(proprietaire, { fraicheurH = 24, maintenant = Date.now() } = {},
                                        chemin = cheminFichier()) {
   const d = await lire(chemin);
-  const candidates = d.veilles
-    .filter(v => v.proprietaire === proprietaire && v.derniereAlerte)
-    .map(v => ({ nom: v.nom, ...v.derniereAlerte }))
+  // Les alertes de veille ET l'essai éventuel entrent dans la même course : c'est la
+  // plus récente qui parle, sinon un essai serait masqué par une vieille alerte.
+  const essai = (d.essais || {})[proprietaire];
+  const candidates = [
+    ...d.veilles
+      .filter(v => v.proprietaire === proprietaire && v.derniereAlerte)
+      .map(v => ({ nom: v.nom, ...v.derniereAlerte })),
+    ...(essai ? [essai] : [])
+  ]
     .filter(a => maintenant - Date.parse(a.t) < fraicheurH * 3600000)
     .sort((a, b) => String(b.t).localeCompare(String(a.t)));
   return candidates[0] || null;
