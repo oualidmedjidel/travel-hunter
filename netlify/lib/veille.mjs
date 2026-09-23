@@ -28,10 +28,12 @@ import { dirname, join } from "node:path";
 // passée, ni au-delà de l'horizon de vente. Une veille posée sur le 31 février ne
 // produirait que des 400 à chaque relevé.
 import { jourValide } from "./duffel.mjs";
+import { genererVapid, abonnementValide } from "./push.mjs";
 
 export const MAX_VEILLES_PAR_PROPRIETAIRE = 5;
 export const MAX_RELEVES = 120;          // à un relevé toutes les 6 h : 30 jours d'historique
 export const MAX_VEILLES_TOTAL = 500;    // garde-fou : le fichier reste lisible d'un coup d'œil
+export const MAX_ABONNEMENTS = 3;        // un téléphone, un ordinateur, un de rattrapage
 
 /**
  * Emplacement du fichier. **Hors du dépôt** : un `git pull` ne doit jamais l'écraser, et
@@ -98,6 +100,62 @@ export function criteresValides(brut) {
            adults, childrenAges: ages, lieux };
 }
 
+/**
+ * Paire VAPID du serveur : lue du fichier, ou générée et rangée au premier appel.
+ *
+ * Personne ne la colle à la main. La clé privée ne quitte jamais ce fichier ; la clé
+ * publique est faite pour être publiée, la page en a besoin pour s'abonner.
+ */
+export async function vapid(chemin = cheminFichier()) {
+  const d = await lire(chemin);
+  if (d.vapid && d.vapid.privee && d.vapid.point) return d.vapid;
+  const neuve = genererVapid();
+  d.vapid = neuve;
+  await ecrire(d, chemin);
+  return neuve;
+}
+
+/**
+ * Enregistre un abonnement aux notifications. Le même point d'entrée n'est jamais stocké
+ * deux fois : un navigateur qui se réabonne ne doit pas produire deux alertes.
+ */
+export async function abonner(proprietaire, brut, chemin = cheminFichier()) {
+  const a = abonnementValide(brut);
+  if (!a) return { erreur: "abonnement inexploitable" };
+  const d = await lire(chemin);
+  d.abonnements = Array.isArray(d.abonnements) ? d.abonnements : [];
+  d.abonnements = d.abonnements.filter(x => x.endpoint !== a.endpoint);
+  const siens = d.abonnements.filter(x => x.proprietaire === proprietaire);
+  if (siens.length >= MAX_ABONNEMENTS) {
+    // On retire le plus ancien plutôt que de refuser : l'utilisateur vient d'accepter
+    // les notifications sur cet appareil, lui rendre une erreur serait incompréhensible.
+    const plusVieux = siens.sort((x, y) => String(x.creee).localeCompare(String(y.creee)))[0];
+    d.abonnements = d.abonnements.filter(x => x !== plusVieux);
+  }
+  d.abonnements.push({ ...a, proprietaire });
+  await ecrire(d, chemin);
+  return { abonne: true };
+}
+
+export async function desabonner(endpoint, chemin = cheminFichier()) {
+  const d = await lire(chemin);
+  d.abonnements = (Array.isArray(d.abonnements) ? d.abonnements : []).filter(x => x.endpoint !== endpoint);
+  await ecrire(d, chemin);
+  return { desabonne: true };
+}
+
+export async function abonnementsDe(proprietaire, chemin = cheminFichier()) {
+  const d = await lire(chemin);
+  return (Array.isArray(d.abonnements) ? d.abonnements : []).filter(x => x.proprietaire === proprietaire);
+}
+
+/** À qui appartient ce point d'entrée ? C'est ainsi que le service worker s'identifie. */
+export async function proprietaireDeLAbonnement(endpoint, chemin = cheminFichier()) {
+  const d = await lire(chemin);
+  const a = (Array.isArray(d.abonnements) ? d.abonnements : []).find(x => x.endpoint === endpoint);
+  return a ? a.proprietaire : null;
+}
+
 /** Identifiant court, lisible dans un fichier ouvert à la main. */
 const identifiant = () => Math.random().toString(36).slice(2, 10);
 
@@ -162,6 +220,34 @@ export async function enregistrerReleve(id, releve, chemin = cheminFichier()) {
   if (v.releves.length > MAX_RELEVES) v.releves = v.releves.slice(-MAX_RELEVES);
   await ecrire(d, chemin);
   return { releves: v.releves.length };
+}
+
+/** Garde la trace de la dernière alerte envoyée : c'est ce que le service worker affichera. */
+export async function noterAlerte(id, alerte, chemin = cheminFichier()) {
+  const d = await lire(chemin);
+  const v = d.veilles.find(x => x.id === id);
+  if (!v) return { erreur: "veille introuvable" };
+  v.derniereAlerte = { t: new Date().toISOString(), ...alerte };
+  await ecrire(d, chemin);
+  return v.derniereAlerte;
+}
+
+/**
+ * L'alerte la plus récente d'un propriétaire, et seulement si elle est fraîche.
+ *
+ * Un service worker peut être réveillé longtemps après l'envoi — appareil éteint, réseau
+ * coupé. Annoncer « le prix a baissé » sur une alerte de la semaine dernière serait faux :
+ * passé le délai, on rend null et la page s'affiche sans promesse.
+ */
+export async function derniereAlerteDe(proprietaire, { fraicheurH = 24, maintenant = Date.now() } = {},
+                                       chemin = cheminFichier()) {
+  const d = await lire(chemin);
+  const candidates = d.veilles
+    .filter(v => v.proprietaire === proprietaire && v.derniereAlerte)
+    .map(v => ({ nom: v.nom, ...v.derniereAlerte }))
+    .filter(a => maintenant - Date.parse(a.t) < fraicheurH * 3600000)
+    .sort((a, b) => String(b.t).localeCompare(String(a.t)));
+  return candidates[0] || null;
 }
 
 /**

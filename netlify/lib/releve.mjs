@@ -10,11 +10,65 @@
  */
 import vols from "../functions/flights.mjs";
 import sejours from "../functions/stays.mjs";
-import { lire, enregistrerReleve, cheminFichier } from "./veille.mjs";
+import { lire, enregistrerReleve, cheminFichier, abonnementsDe, desabonner, noterAlerte, vapid } from "./veille.mjs";
+import { reveiller } from "./push.mjs";
 
 /** Une Request locale : l'origine n'a aucune importance, seul le chemin est lu. */
 const requete = (chemin, params) =>
   new Request(`http://veille.local${chemin}?${new URLSearchParams(params)}`);
+
+/**
+ * Ce qui mérite de réveiller quelqu'un : un prix **strictement inférieur** à tout ce qui
+ * a été vu jusque-là pour cette destination.
+ *
+ * Pas de seuil en pourcentage, pas d'alerte « ça a baissé depuis hier » : un nouveau
+ * record est rare, donc l'alerte reste rare. Une notification qui arrive trop souvent
+ * finit désactivée, et une alerte désactivée ne vaut rien.
+ *
+ * Il faut au moins un relevé antérieur : sur le tout premier, tout est un record.
+ */
+export function nouveauxRecords(relevesAvant, volsApres) {
+  if (!Array.isArray(relevesAvant) || relevesAvant.length === 0) return [];
+  const records = [];
+  for (const [code, prix] of Object.entries(volsApres || {})) {
+    const anciens = relevesAvant
+      .map(r => (r.vols && typeof r.vols[code] === "number") ? r.vols[code] : null)
+      .filter(x => x !== null);
+    if (!anciens.length) continue;                 // destination jamais vue : pas un record
+    const meilleurAvant = Math.min(...anciens);
+    if (prix < meilleurAvant) {
+      records.push({ code, ancien: meilleurAvant, nouveau: prix,
+                     baisse: Math.round(((meilleurAvant - prix) / meilleurAvant) * 1000) / 10 });
+    }
+  }
+  return records.sort((a, b) => b.baisse - a.baisse);
+}
+
+/**
+ * Réveille les appareils du propriétaire. Aucune charge utile : le service worker
+ * rappellera le site pour savoir quoi afficher (voir netlify/lib/push.mjs).
+ *
+ * Un abonnement périmé (404 ou 410) est oublié sur-le-champ — sinon le fichier
+ * accumule des adresses mortes qu'on réessaie à chaque relevé.
+ */
+export async function alerter(veille, records, { envoi = reveiller, clefs = vapid } = {}) {
+  if (!records.length) return { envoyees: 0 };
+  const meilleur = records[0];
+  await noterAlerte(veille.id, { code: meilleur.code, ancien: meilleur.ancien,
+                                 nouveau: meilleur.nouveau, baisse: meilleur.baisse });
+
+  const abonnements = await abonnementsDe(veille.proprietaire);
+  if (!abonnements.length) return { envoyees: 0, sansAbonnement: true };
+
+  const v = await clefs();
+  let envoyees = 0;
+  for (const a of abonnements) {
+    const r = await envoi(v, a);
+    if (r.ok) envoyees++;
+    if (r.perime) await desabonner(a.endpoint);
+  }
+  return { envoyees, tentees: abonnements.length };
+}
 
 /** Le moins cher par code, depuis la réponse d'un proxy. */
 function moinsChers(liste, cle, champ = "total") {
@@ -32,7 +86,8 @@ function moinsChers(liste, cle, champ = "total") {
  * Un relevé pour une veille. Ne lève jamais : une panne d'un côté ne doit pas empêcher
  * d'enregistrer ce que l'autre a rendu, et surtout pas arrêter la boucle.
  */
-export async function relever(veille, { appelVols = vols, appelSejours = sejours } = {}) {
+export async function relever(veille, options = {}) {
+  const { appelVols = vols, appelSejours = sejours } = options;
   const c = veille.criteres;
   const commun = { adults: String(c.adults) };
   if (c.childrenAges && c.childrenAges.length) commun.children_ages = c.childrenAges.join(",");
@@ -75,9 +130,14 @@ export async function relever(veille, { appelVols = vols, appelSejours = sejours
   const vide = !Object.keys(volsTrouves).length && !Object.keys(hotels).length;
   if (vide) return { id: veille.id, enregistre: false, echecs };
 
+  // Les records se calculent AVANT d'enregistrer : après, le nouveau prix ferait
+  // partie de l'historique et serait comparé à lui-même.
+  const records = nouveauxRecords(veille.releves, volsTrouves);
   await enregistrerReleve(veille.id, { vols: volsTrouves, hotels, devise, mode });
+  const alerte = records.length ? await alerter(veille, records, options) : { envoyees: 0 };
   return { id: veille.id, enregistre: true, vols: Object.keys(volsTrouves).length,
-           hotels: Object.keys(hotels).length, echecs };
+           hotels: Object.keys(hotels).length, records: records.length,
+           alertes: alerte.envoyees, echecs };
 }
 
 /** Toutes les veilles, l'une après l'autre : rien ne presse, et l'amont a des quotas. */

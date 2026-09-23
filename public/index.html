@@ -547,6 +547,7 @@ const state = {
   staysFournisseur: null,   // "liteapi" | "duffel"
   staysMode: null,     // "test" (clé sand_ LiteAPI ou jeton duffel_test_) | "live"
   veilles: null,       // résumés rendus par /api/veille, null tant qu'on n'a pas demandé
+  alertes: null,       // "actives" | "inactives" | "refusees" | "indisponibles"
   veilleMsg: null,     // retour de la dernière action de veille, affiché tel quel
   sources: {},         // id -> "attente" | "encours" | "ok" | "vide" | "absent"
   sourcesN: {},        // id -> nombre de résultats réellement revenus
@@ -1587,9 +1588,90 @@ async function oublierVeille(veilleId) {
   render();
 }
 
+/** base64url → octets : la forme qu'exige `pushManager.subscribe`. */
+function base64urlVersOctets(s) {
+  const base64 = (s + "=".repeat((4 - s.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/");
+  const brut = atob(base64);
+  return Uint8Array.from(brut, c => c.charCodeAt(0));
+}
+
+/** Où en sont les notifications sur CET appareil. Jamais deviné : toujours relu. */
+async function etatAlertes() {
+  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return "indisponibles";
+  }
+  if (Notification.permission === "denied") return "refusees";
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const abo = await reg.pushManager.getSubscription();
+    return abo ? "actives" : "inactives";
+  } catch { return "indisponibles"; }
+}
+
+/**
+ * Abonne cet appareil. Trois refus possibles, tous dits tels quels : navigateur sans
+ * push, permission refusée, service de push injoignable. Aucun « réessayez plus tard ».
+ */
+async function activerAlertes() {
+  const id = proprietaire();
+  if (!id) { state.veilleMsg = "Le stockage du navigateur est refusé : impossible de t'identifier."; render(); return; }
+  if (await etatAlertes() === "indisponibles") {
+    state.veilleMsg = "Ce navigateur ne gère pas les notifications poussées."; render(); return;
+  }
+
+  state.veilleMsg = "En attente de ton autorisation…"; render();
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") {
+    state.alertes = permission === "denied" ? "refusees" : "inactives";
+    state.veilleMsg = "Notifications refusées. Tu peux revenir sur ce choix dans les réglages du site.";
+    render(); return;
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const d = await (await fetch(`/api/veille?proprietaire=${encodeURIComponent(id)}`)).json();
+    if (!d.vapid) throw new Error("clé publique absente");
+    const abonnement = await reg.pushManager.subscribe({
+      userVisibleOnly: true,                       // exigé par Chrome : pas de push silencieux
+      applicationServerKey: base64urlVersOctets(d.vapid)
+    });
+    const r = await fetch("/api/veille", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "abonner", proprietaire: id, abonnement: abonnement.toJSON() })
+    });
+    state.alertes = r.ok ? "actives" : "inactives";
+    state.veilleMsg = r.ok
+      ? "Alertes activées sur cet appareil. Tu seras prévenu quand un vol passe sous son meilleur prix connu."
+      : "Le serveur a refusé l'abonnement.";
+  } catch (e) {
+    state.alertes = "inactives";
+    state.veilleMsg = "Le service de notifications n'a pas répondu.";
+  }
+  render();
+}
+
+async function couperAlertes() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const abo = await reg.pushManager.getSubscription();
+    if (abo) {
+      await fetch("/api/veille", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "desabonner", endpoint: abo.endpoint, proprietaire: proprietaire() })
+      });
+      await abo.unsubscribe();
+    }
+  } catch {}
+  state.alertes = "inactives";
+  state.veilleMsg = "Alertes coupées sur cet appareil.";
+  render();
+}
+
 async function ouvrirVeilles() {
   state.view = "veilles"; state.veilleMsg = null; render();
-  await chargerVeilles(); render();
+  await chargerVeilles();
+  state.alertes = await etatAlertes();
+  render();
 }
 
 /** « 12 % au-dessus du meilleur prix vu » — ou rien tant qu'un seul relevé existe. */
@@ -1610,9 +1692,23 @@ function viewVeilles() {
          vivent dans ce navigateur : sur un autre appareil, tu ne les verras pas.</p>
     </section>`;
 
-  if (v === null) return entete + `<p class="footnote">Chargement…</p>`;
+  // L'état des notifications se dit en clair, y compris quand c'est le navigateur qui
+  // bloque : un bouton qui ne marcherait pas serait pire qu'une phrase.
+  const alertes = {
+    actives: `<div class="alert alert--info"><span>🔔</span><div><b>Alertes actives sur cet appareil.</b>
+      Tu seras prévenu quand un vol passe sous son meilleur prix connu.
+      <button type="button" class="chip" onclick="couperAlertes()">Couper</button></div></div>`,
+    inactives: `<div class="alert alert--info"><span>🔕</span><div>Les alertes sont éteintes sur cet appareil.
+      <button type="button" class="chip" onclick="activerAlertes()">Activer les alertes</button></div></div>`,
+    refusees: `<div class="alert alert--warn"><span>🚫</span><div><b>Notifications refusées pour ce site.</b>
+      Le navigateur ne me laissera pas redemander : il faut les réautoriser dans ses réglages.</div></div>`,
+    indisponibles: `<div class="alert alert--warn"><span>📵</span><div>Ce navigateur ne gère pas les
+      notifications poussées. La veille fonctionne quand même, il faut ouvrir cette page pour voir l'écart.</div></div>`
+  }[state.alertes] || "";
+
+  if (v === null) return entete + alertes + `<p class="footnote">Chargement…</p>`;
   if (!v.length) {
-    return entete + `<div class="alert alert--info"><span>🔭</span><div>Aucune veille pour
+    return entete + alertes + `<div class="alert alert--info"><span>🔭</span><div>Aucune veille pour
       l'instant. Lance une chasse, puis « Surveiller cette recherche ».</div></div>`;
   }
 
@@ -1634,7 +1730,8 @@ function viewVeilles() {
     </article>`;
   }).join("");
 
-  return entete + (state.veilleMsg ? `<div class="alert alert--info"><span>🔔</span><div>${esc(state.veilleMsg)}</div></div>` : "")
+  return entete + alertes
+    + (state.veilleMsg ? `<div class="alert alert--info"><span>💬</span><div>${esc(state.veilleMsg)}</div></div>` : "")
     + `<div class="deals">${cartes}</div>`;
 }
 
@@ -1906,6 +2003,14 @@ function corpsDesTests(ok, out) {
      ecartTexte({ actuel: 300, meilleur: 300, ecart: 0, releves: 4 }) === "au meilleur prix vu");
   ok("veille : un écart positif est rendu en pourcentage",
      ecartTexte({ actuel: 336, meilleur: 300, ecart: 12, releves: 4 }) === "12 % au-dessus du meilleur vu");
+
+  // Alertes — la clé publique VAPID arrive en base64url et doit devenir des octets.
+  ok("clé publique : 65 octets, point non compressé",
+     base64urlVersOctets("BEl4Qm9rRXhhbXBsZUtleUZvclRlc3RpbmdPbmx5MTIzNDU2Nzg5MEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFla").length > 60);
+  ok("clé publique : le - et le _ de base64url sont rendus",
+     base64urlVersOctets("_-_-")[0] === base64urlVersOctets("/+/+")[0]);
+  ok("clé publique : un préfixe 0x04 reste un 0x04",
+     base64urlVersOctets(btoa(String.fromCharCode(4, 1, 2)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""))[0] === 4);
 
   // N — aucune branche du bandeau ne peut taire l'état hôtelier.
   // L'ancre est `const bandeau` : sans elle, indexOf tombait sur l'objet etatHotels,

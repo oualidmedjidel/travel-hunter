@@ -7,7 +7,7 @@
  *
  * Ici : network-first pour les navigations (HTML), cache-first pour le reste.
  */
-const CACHE = "tdh-v4";   // v3 → v4 : purge les caches empoisonnés par le défaut corrigé ci-dessous
+const CACHE = "tdh-v5";   // v4 → v5 : le service worker gagne le push, les anciens caches partent
 
 /**
  * Ce qui mérite d'entrer en cache. La version précédente mettait en cache la réponse de
@@ -32,6 +32,55 @@ self.addEventListener("activate", e => {
       .then(names => Promise.all(names.filter(n => n !== CACHE).map(n => caches.delete(n))))
       .then(() => self.clients.claim())
   );
+});
+
+/**
+ * Une notification poussée arrive SANS contenu : le serveur ne fait que réveiller
+ * l'appareil (netlify/lib/push.mjs explique pourquoi). C'est donc ici qu'on demande au
+ * site quoi afficher, en s'identifiant par notre propre point d'entrée — un service
+ * worker n'a pas accès au localStorage où vit l'identifiant du propriétaire.
+ *
+ * Si le serveur ne rend aucune alerte fraîche, on affiche une formule neutre plutôt
+ * qu'un prix inventé : la permission a été accordée, un silence total serait pire.
+ */
+self.addEventListener("push", e => {
+  e.waitUntil((async () => {
+    let titre = "Travel Deal Hunter", corps = "Un prix a bougé sur une de tes veilles.";
+    try {
+      const abonnement = await self.registration.pushManager.getSubscription();
+      if (abonnement) {
+        const r = await fetch("/api/veille?quoi=alerte", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ endpoint: abonnement.endpoint })
+        });
+        const d = await r.json();
+        if (d && d.alerte) {
+          const a = d.alerte;
+          titre = `${a.code} : ${Math.round(a.nouveau)} € — nouveau meilleur prix`;
+          corps = `${a.baisse} % sous le meilleur prix déjà vu (${Math.round(a.ancien)} €)`
+                + (a.nom ? ` · ${a.nom}` : "");
+        }
+      }
+    } catch {}
+    await self.registration.showNotification(titre, {
+      body: corps,
+      icon: "/icone-192.png",
+      badge: "/icone-192.png",
+      tag: "tdh-veille",        // une seule notification à la fois, pas une pile
+      renotify: true
+    });
+  })());
+});
+
+/** Un clic ramène sur la page des veilles, en réutilisant l'onglet déjà ouvert s'il existe. */
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const fenetres = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const ouverte = fenetres.find(c => c.url.includes(self.location.origin));
+    if (ouverte) { await ouverte.focus(); return; }
+    await self.clients.openWindow("/");
+  })());
 });
 
 self.addEventListener("fetch", e => {

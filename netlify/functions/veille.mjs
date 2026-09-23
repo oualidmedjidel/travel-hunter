@@ -12,7 +12,8 @@
  * on y stockait un jour autre chose que des critères de voyage.
  */
 import { json } from "../lib/duffel.mjs";
-import { ajouter, supprimer, lesSiennes, resume, MAX_VEILLES_PAR_PROPRIETAIRE } from "../lib/veille.mjs";
+import { ajouter, supprimer, lesSiennes, resume, MAX_VEILLES_PAR_PROPRIETAIRE,
+         vapid, abonner, desabonner, proprietaireDeLAbonnement, derniereAlerteDe } from "../lib/veille.mjs";
 
 /** Forme imposée au propriétaire : assez long pour ne pas se deviner par hasard. */
 const PROPRIETAIRE = /^[A-Za-z0-9_-]{12,64}$/;
@@ -20,13 +21,34 @@ const PROPRIETAIRE = /^[A-Za-z0-9_-]{12,64}$/;
 export default async (req) => {
   const url = new URL(req.url);
 
+  /**
+   * Le service worker demande quoi afficher. Il ne connaît que son propre point
+   * d'entrée — pas le propriétaire, qui vit dans le localStorage auquel il n'a pas
+   * accès. On remonte donc du point d'entrée au propriétaire, puis à sa dernière alerte.
+   *
+   * Sans alerte fraîche, on rend `null` plutôt qu'un texte inventé : le service worker
+   * affiche alors une formule neutre, jamais un prix qui n'existe plus.
+   */
+  if (req.method === "POST" && url.searchParams.get("quoi") === "alerte") {
+    let c = null;
+    try { c = await req.json(); } catch { c = null; }
+    const endpoint = c && typeof c.endpoint === "string" ? c.endpoint : "";
+    if (!endpoint) return json({ error: "endpoint manquant." }, 400);
+    const prop = await proprietaireDeLAbonnement(endpoint);
+    if (!prop) return json({ alerte: null, inconnu: true });
+    return json({ alerte: await derniereAlerteDe(prop) });
+  }
+
   if (req.method === "GET") {
     const proprietaire = String(url.searchParams.get("proprietaire") || "");
     if (!PROPRIETAIRE.test(proprietaire)) {
       return json({ error: "proprietaire manquant ou mal formé." }, 400);
     }
     const veilles = await lesSiennes(proprietaire);
-    return json({ veilles: veilles.map(resume), quota: MAX_VEILLES_PAR_PROPRIETAIRE });
+    // La clé publique VAPID voyage avec la liste : la page en a besoin pour s'abonner,
+    // et elle est publique par construction.
+    const v = await vapid();
+    return json({ veilles: veilles.map(resume), quota: MAX_VEILLES_PAR_PROPRIETAIRE, vapid: v.point });
   }
 
   if (req.method === "POST") {
@@ -45,13 +67,25 @@ export default async (req) => {
       return json({ veille: resume(r.veille) }, 201);
     }
 
+    if (corps.action === "abonner") {
+      const r = await abonner(proprietaire, corps.abonnement);
+      if (r.erreur) return json({ error: r.erreur }, 400);
+      return json(r, 201);
+    }
+
+    if (corps.action === "desabonner") {
+      const e = String(corps.endpoint || "");
+      if (!e) return json({ error: "endpoint manquant." }, 400);
+      return json(await desabonner(e));
+    }
+
     if (corps.action === "supprimer") {
       const r = await supprimer({ proprietaire, id: String(corps.id || "") });
       if (r.erreur) return json({ error: r.erreur }, 404);
       return json(r);
     }
 
-    return json({ error: "action inconnue : ajouter ou supprimer." }, 400);
+    return json({ error: "action inconnue : ajouter, supprimer, abonner ou desabonner." }, 400);
   }
 
   return json({ error: "méthode non gérée." }, 405);
