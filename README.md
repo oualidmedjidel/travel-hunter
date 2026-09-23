@@ -65,7 +65,10 @@ GET /api/stays?lieux=RAK:31.6295,-7.9811&check_in=2026-11-05&check_out=2026-11-1
   Cet extrait passe par `expurge` : toute suite de 16 caractères ou plus sans séparateur
   devient `***`, donc ni jeton ni clé n'en ressort, même renvoyée en écho par l'amont.
 - Appels par **lots de 6**, budget total **18 s**, délai amont **9 s**, cache mémoire
-  **15 min / 300 entrées**.
+  **1 h / 300 entrées** (`CACHE_MS` dans `netlify/lib/duffel.mjs`, une seule définition
+  pour les deux proxys). Mesuré en production : 5,8 s au premier appel, 0,08 s au second.
+  Une offre de vol dont Duffel a annoncé l'expiration est écartée du cache avant d'être
+  resservie ; un tarif hôtelier, lui, peut avoir jusqu'à une heure.
 - ⚠️ `abandonnees` (vols) et `abandonnes` (hôtels) valent **0 en toute circonstance** depuis
   que le délai amont est passé à 9 s : le contrôle de temps ne peut plus refuser un lot. Le
   signal d'une chasse tronquée est dans `sansOffre`, avec `status:"TimeoutError"`.
