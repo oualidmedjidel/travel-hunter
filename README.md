@@ -33,8 +33,8 @@ https://travel-hunter.fr/                200 · 130 600 o · md5 f94514578a16edf
 /api/flights 10 destinations depuis PAR  200 · 14,1 s · 10/10 trouvées · devises ["EUR"]
 /api/stays   2 lieux                     200 · 3,8 s · fournisseur "liteapi" · mode "test"
                                          vrais établissements, prix de bac à sable
-?selftest=1 dans un navigateur           113 PASS · 0 FAIL
-npm test                                 358/358 OK · 40/40 OK · 115/115 OK
+?selftest=1 dans un navigateur           121 PASS · 0 FAIL (mesuré en local)
+npm test                                 372/372 OK · 40/40 OK · 115/115 OK
 ```
 
 - **Vols : réels**, avec un jeton de bac à sable (`mode:"test"`) — d'où le badge `vol test`,
@@ -75,9 +75,16 @@ GET /api/stays?lieux=RAK:31.6295,-7.9811&check_in=2026-11-05&check_out=2026-11-1
   production le 2026-09-24, PAR → FAO : sans contrainte Transavia 80,27 € (départ 06:00),
   `depart_apres=10` retient TAP 440,09 € (départ 17:50), `retour_avant=11` retient Lufthansa
   239,42 € (pose 08:25).
-- ⚠️ Quand un filtre — horaire ou bagage — ne laisse **aucune** offre, la destination sort
-  avec `trouvees: 0` et `sansOffre` **vide** : la carte dit « aucune offre » sans dire
-  laquelle des contraintes l'a vidée. `sansOffre` ne porte que les échecs de l'amont.
+- Quand un filtre — horaire ou bagage — ne laisse **aucune** offre, la destination sort avec
+  `trouvees: 0` et une entrée dans `sansOffre` qui dit **pourquoi** :
+  `{destination, motif:"toutes-ecartees"|"aucune-offre", vues, soute, departApres, retourAvant}`.
+  `motif` sépare deux silences que la réponse confondait — l'amont n'a rien proposé, ou rien
+  de ce qu'il a proposé n'a été retenu — et les compteurs disent quelle règle a écarté quoi.
+  La page en fait une phrase qui nomme le curseur à bouger, affichée à la place des horaires
+  de démonstration. Le motif est **mis en cache avec le résultat et republié à chaque hit** :
+  sans cela il n'aurait vécu qu'une requête sur soixante minutes.
+  Les entrées d'échec amont gardent leur forme historique (`status`, `type`, `code`, `titre`)
+  et n'ont **pas** de `motif` : c'est ce qui les distingue.
 - ⚠️ **Le prix d'un bagage acheté à part n'est pas disponible.** Mesuré le 2026-09-23 sur
   19 offres réelles : `available_services` valait `null` sur les 19, y compris avec
   `return_available_services=true`. Aucun « +25 € la valise » n'est donc affiché — ce serait
@@ -126,7 +133,7 @@ Le dossier `netlify/` garde son nom d'origine : le renommer toucherait les impor
 rien apporter. Netlify n'héberge plus l'application — `tdhunt.netlify.app` redirige en 301
 vers `travel-hunter.fr`.
 
-L'auto-test de l'interface s'ouvre avec `?selftest=1` : 113 assertions (tarification,
+L'auto-test de l'interface s'ouvre avec `?selftest=1` : 121 assertions (tarification,
 filtres, validation, échappement HTML, fusion des tarifs réels, comptage des chambres,
 horizon de vente, badges, focus clavier, bagages, tranche horaire, veille et alertes)
 affichées en surimpression. Plusieurs d'entre elles vérifient qu'un champ **existe bien dans
