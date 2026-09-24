@@ -1123,9 +1123,23 @@ function texteMotifVol(m, f) {
   };
   const regle = ["soute", "departApres", "retourAvant"].sort((a, b) => (m[b] || 0) - (m[a] || 0))[0];
   const s = m.vues > 1 ? "s" : "";
-  return m[regle]
+  const neutre = `${m.vues} vol${s} proposé${s}, aucun tarif exploitable`;
+  const n = m[regle] || 0;
+  // Deux garde-fous, trouvés en réfutant le correctif le 2026-09-24 :
+  //
+  // 1. Sans la borne, la phrase disait « départ pas avant undefined h ». Le compteur d'une
+  //    règle ne peut être non nul que si le serveur a appliqué le filtre, donc que si la
+  //    valeur existe — mais `state.sansOffreVol` survit à un rendu, et une réponse
+  //    réaffichée avec un formulaire vidé écrirait ce « undefined » à l'écran.
+  // 2. Le total vu n'est pas le total écarté : une offre au montant illisible entre dans
+  //    `vues` sans qu'aucun filtre l'ait refusée. Mesuré : 2 offres, une illisible, une
+  //    écartée par l'horaire, et la phrase accusait l'horaire pour les deux.
+  const borne = regle === "soute" ? 0 : f[regle];
+  if (!n || !Number.isFinite(borne)) return neutre;
+  const sn = n > 1 ? "s" : "";
+  return n === m.vues
     ? `${m.vues} vol${s} proposé${s}, écarté${s} par « ${libelles[regle]} »`
-    : `${m.vues} vol${s} proposé${s}, aucun tarif exploitable`;
+    : `${m.vues} vol${s} proposé${s}, dont ${n} écarté${sn} par « ${libelles[regle]} »`;
 }
 
 /**
@@ -1441,7 +1455,9 @@ function attach() {
   on("tripDuration", "change", e => { f.tripDuration = int(e.target.value, DEFAULTS.tripDuration); render(); });
   on("origin", "change", e => {
     f.origin = AIRPORTS.some(a => a.code === e.target.value) ? e.target.value : DEFAULTS.origin;
-    state.live = null; state.liveStatus = null;  // les tarifs du précédent départ ne valent plus
+    // Les motifs partent avec les tarifs : un « écarté par l'horaire » gardé d'un autre
+    // départ décrirait une réponse qui n'existe plus.
+    state.live = null; state.liveStatus = null; state.sansOffreVol = null;
     render();
   });
   on("minStars", "change", e => { f.minStars = int(e.target.value, DEFAULTS.minStars); render(); });
@@ -2173,6 +2189,18 @@ function corpsDesTests(ok, out) {
   ok("motif : aucun filtre en cause = aucun filtre accusé",
      texteMotifVol({ motif: "toutes-ecartees", vues: 3, soute: 0, departApres: 0, retourAvant: 0 }, fMotif)
      === "3 vols proposés, aucun tarif exploitable");
+  // Réfutation du 2026-09-24 : le total vu n'est pas le total écarté. Une offre au montant
+  // illisible entre dans `vues` sans qu'aucun filtre l'ait refusée — la phrase accusait
+  // l'horaire pour elle aussi.
+  ok("motif : on n'impute à une règle que les vols qu'elle a vraiment écartés",
+     texteMotifVol({ motif: "toutes-ecartees", vues: 3, soute: 0, departApres: 1, retourAvant: 0 }, fMotif)
+     === "3 vols proposés, dont 1 écarté par « départ pas avant 23 h »");
+  // Et sans la borne du formulaire, la phrase écrivait « pas avant undefined h ».
+  ok("motif : sans valeur de filtre, aucune règle n'est nommée",
+     texteMotifVol({ motif: "toutes-ecartees", vues: 2, soute: 0, departApres: 2, retourAvant: 0 }, { ...base })
+     === "2 vols proposés, aucun tarif exploitable");
+  ok("motif : changer d'aéroport de départ jette les motifs avec les tarifs",
+     /state\.live = null; state\.liveStatus = null; state\.sansOffreVol = null;/.test(attach.toString()));
   ok("motif : un amont muet n'accuse aucun filtre",
      texteMotifVol({ motif: "aucune-offre", vues: 0, soute: 0, departApres: 0, retourAvant: 0 }, fMotif)
      === "aucun vol proposé par la source pour ces dates");
