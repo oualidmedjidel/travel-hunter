@@ -542,8 +542,9 @@ const state = {
   error: null,
   sort: "price",
   live: null,          // Map code IATA -> tarif réel, ou null
-  liveStatus: null,    // "reel" | "non-configure" | "erreur" | "devise"
+  liveStatus: null,    // "reel" | "filtres" | "non-configure" | "erreur" | "devise"
   liveMode: null,      // "test" (bac à sable Duffel) | "live"
+  sansOffreVol: null,  // sansOffre de /api/flights : motif par destination disparue, ou null
   stays: null,         // Map code -> tarif hôtelier réel, ou null
   staysStatus: null,   // "reel" | "non-configure" | "erreur"
   staysFournisseur: null,   // "liteapi" | "duffel"
@@ -1029,6 +1030,7 @@ function viewResults() {
     // tarif réel n'est interrogé » alors que les hôtels pouvaient être branchés, et elles
     // taisaient l'état hôtelier. D'où la reformulation, et le rappel dans chacune.
     "non-configure": `<div class="alert alert--warn"><span>⚙️</span><div><b>Vols de démonstration</b> — la variable <code>DUFFEL_TOKEN</code> n'est pas définie côté serveur, aucun tarif de vol réel n'est interrogé. ${esc(etatHotels)}</div></div>`,
+    "filtres": `<div class="alert alert--warn"><span>🎚️</span><div><b>Tes filtres ont tout écarté</b> — l'API de vols a répondu, mais aucune offre ne respecte les contraintes choisies ; chaque carte dit laquelle. Les prix de vol affichés sont modélisés. ${esc(etatHotels)}</div></div>`,
     "erreur": `<div class="alert alert--warn"><span>⚠️</span><div><b>Repli sur la démonstration</b> — l'API de vols n'a rien renvoyé d'exploitable pour ce départ. Les prix de vol affichés sont modélisés. ${esc(etatHotels)}</div></div>`,
     "devise": `<div class="alert alert--warn"><span>💱</span><div><b>Devise incompatible</b> — ton compte Duffel facture dans une autre devise que l'euro. Les tarifs de vol réels ont été écartés plutôt que d'être additionnés à tort à des prix d'hôtel en euros. Règle la devise du compte sur EUR. ${esc(etatHotels)}</div></div>`
   }[state.liveStatus] || "";
@@ -1099,6 +1101,31 @@ function texteBagages(b) {
   if (b.soute !== null) morceaux.push(b.soute > 0 ? `${b.soute} en soute` : "pas de soute");
   if (b.cabine !== null) morceaux.push(b.cabine > 0 ? `${b.cabine} en cabine` : "pas de cabine");
   return morceaux.join(" · ");
+}
+
+/**
+ * Pourquoi une destination n'a aucun tarif réel. `sansOffre` ne portait que les échecs
+ * amont ; depuis le 2026-09-24 il porte aussi les destinations vidées par les filtres —
+ * jusque-là la carte affichait un vol modélisé à 195 € sans un mot, alors que l'API avait
+ * répondu et que c'était la contrainte horaire du voyageur qui avait tout écarté.
+ * `null` = rien à dire : la carte garde alors ses horaires.
+ */
+function texteMotifVol(m, f) {
+  if (!m) return null;
+  if (!m.motif) return "la source de vols n'a pas répondu pour cette destination";
+  if (!m.vues) return "aucun vol proposé par la source pour ces dates";
+  // Les bornes sont rappelées avec la valeur choisie par le voyageur : « écarté par tes
+  // filtres » ne dit pas quel curseur bouger.
+  const libelles = {
+    soute: "bagage en soute exigé",
+    departApres: `départ pas avant ${f.departApres} h`,
+    retourAvant: `retour posé avant ${f.retourAvant} h`
+  };
+  const regle = ["soute", "departApres", "retourAvant"].sort((a, b) => (m[b] || 0) - (m[a] || 0))[0];
+  const s = m.vues > 1 ? "s" : "";
+  return m[regle]
+    ? `${m.vues} vol${s} proposé${s}, écarté${s} par « ${libelles[regle]} »`
+    : `${m.vues} vol${s} proposé${s}, aucun tarif exploitable`;
 }
 
 /**
@@ -1255,6 +1282,8 @@ function dealCard(r, i, f) {
   const pct = v => (v / r.total * 100).toFixed(1) + "%";
   const dates = f.flexibleDates ? "" : `${f.departureDate.slice(8)}/${f.departureDate.slice(5, 7)} → ${f.returnDate.slice(8)}/${f.returnDate.slice(5, 7)}`;
   const bv = badgeVol(r.flightReel, state.liveMode);
+  // Pourquoi cette destination n'a pas de tarif réel, quand /api/flights l'a dit.
+  const motifVol = texteMotifVol((state.sansOffreVol || []).find(m => m.destination === r.id), f);
   const bh = badgeHotel(r.hotelReel, state.staysMode);
   const flightsUrl = lienVols(f.origin, r.id, f.flexibleDates ? "" : f.departureDate, f.flexibleDates ? "" : f.returnDate);
   const hotelUrl   = lienHotel(r.hotelNom || (r.hotelReel ? "" : r.hotel), r.city, f, r.rooms);
@@ -1279,7 +1308,7 @@ function dealCard(r, i, f) {
 
     <div class="specs">
       <div class="spec"><span aria-hidden="true">✈️</span><span class="spec__k">Vol</span>
-        <span class="spec__v">${esc(r.compagnieReelle || r.airline)}<small>${esc(horaireVol(r))}</small></span></div>
+        <span class="spec__v">${esc(r.compagnieReelle || r.airline)}<small>${esc(motifVol || horaireVol(r))}</small></span></div>
       <div class="spec"><span aria-hidden="true">🏨</span><span class="spec__k">Hôtel</span>
         <span class="spec__v">${esc(r.hotelNom || (r.hotelReel ? "Établissement non communiqué" : r.hotel))}<small>${esc(detailHotel(r))}</small></span></div>
       <div class="spec"><span aria-hidden="true">🏖️</span><span class="spec__k">Plage</span>
@@ -1528,7 +1557,12 @@ async function fetchLiveFlights(f) {
     if (!enEuros.length && data.flights.length) return { statut: "devise", live: null, meta: data };
 
     const live = new Map(enEuros.map(v => [v.destination, v]));
-    return { statut: live.size ? "reel" : "erreur", live, meta: data };
+    if (live.size) return { statut: "reel", live, meta: data };
+    // Rien d'exploitable, mais l'API a bien répondu : quand chaque destination manquante a
+    // son motif, le bandeau « l'API n'a rien renvoyé d'exploitable » accuse le fournisseur
+    // à tort. Mesuré le 2026-09-24 avec une destination et retour_avant=1.
+    const motifs = Array.isArray(data.sansOffre) ? data.sansOffre : [];
+    return { statut: motifs.length && motifs.every(m => m.motif) ? "filtres" : "erreur", live, meta: data };
   } catch {
     return { statut: "erreur", live: null };
   }
@@ -1880,6 +1914,7 @@ async function hunt() {
   state.live = vols.live;
   state.liveStatus = vols.statut;
   state.liveMode = vols.meta && vols.meta.mode ? vols.meta.mode : null;
+  state.sansOffreVol = vols.meta && Array.isArray(vols.meta.sansOffre) ? vols.meta.sansOffre : null;
   state.stays = hotels.stays;
   state.staysStatus = hotels.statut;
   state.staysFournisseur = hotels.meta && hotels.meta.fournisseur ? hotels.meta.fournisseur : null;
@@ -2126,6 +2161,37 @@ function corpsDesTests(ok, out) {
   ok("bagages : sans déclaration, on le dit au lieu d'inventer une absence",
      texteBagages(null) === "bagages non communiqués"
      && texteBagages({ soute: null, cabine: null }) === "bagages non communiqués");
+  // Motif de disparition d'une destination. Mesuré le 2026-09-24 : une carte Faro à 195 €
+  // de vol inventé s'affichait là où le voyageur croyait lire le résultat de sa contrainte.
+  const fMotif = { ...base, departApres: 23, retourAvant: 1 };
+  ok("motif : la règle la plus fréquente est nommée avec la valeur choisie",
+     texteMotifVol({ motif: "toutes-ecartees", vues: 12, soute: 0, departApres: 12, retourAvant: 0 }, fMotif)
+     === "12 vols proposés, écartés par « départ pas avant 23 h »");
+  ok("motif : un seul vol se dit au singulier",
+     texteMotifVol({ motif: "toutes-ecartees", vues: 1, soute: 0, departApres: 0, retourAvant: 1 }, fMotif)
+     === "1 vol proposé, écarté par « retour posé avant 1 h »");
+  ok("motif : aucun filtre en cause = aucun filtre accusé",
+     texteMotifVol({ motif: "toutes-ecartees", vues: 3, soute: 0, departApres: 0, retourAvant: 0 }, fMotif)
+     === "3 vols proposés, aucun tarif exploitable");
+  ok("motif : un amont muet n'accuse aucun filtre",
+     texteMotifVol({ motif: "aucune-offre", vues: 0, soute: 0, departApres: 0, retourAvant: 0 }, fMotif)
+     === "aucun vol proposé par la source pour ces dates");
+  ok("motif : un échec amont ne se déguise pas en filtre",
+     texteMotifVol({ destination: "FAO", status: 500 }, fMotif)
+     === "la source de vols n'a pas répondu pour cette destination");
+  ok("motif : rien à dire, rien d'affiché — la carte garde ses horaires",
+     texteMotifVol(null, fMotif) === null && texteMotifVol(undefined, fMotif) === null);
+  ok("motif : la carte l'affiche À LA PLACE des horaires de démonstration", (() => {
+    const avant = state.sansOffreVol;
+    state.sansOffreVol = [{ destination: "FAO", motif: "toutes-ecartees", vues: 12, soute: 0, departApres: 12, retourAvant: 0 }];
+    const ligne = search(fMotif).rows.find(x => x.id === "FAO");
+    const html = dealCard(ligne, 1, fMotif);
+    state.sansOffreVol = avant;
+    return ligne && html.includes("12 vols proposés, écartés par « départ pas avant 23 h »")
+      && !html.includes(ligne.times);
+  })());
+  ok("motif : hunt() alimente state.sansOffreVol depuis la réponse du proxy",
+     /state\.sansOffreVol = vols\.meta/.test(hunt.toString()));
   ok("bagages : une seule information déclarée suffit",
      texteBagages({ soute: 2, cabine: null }) === "2 en soute");
   // Le tarif de démonstration n'a pas de bagages : la carte ne doit pas en inventer.
@@ -2176,10 +2242,10 @@ function corpsDesTests(ok, out) {
   // N — aucune branche du bandeau ne peut taire l'état hôtelier.
   // L'ancre est `const bandeau` : sans elle, indexOf tombait sur l'objet etatHotels,
   // qui porte les mêmes clés — l'assertion mesurait le mauvais littéral.
-  ok("les quatre branches du bandeau rappellent l'état des hôtels", (() => {
+  ok("les cinq branches du bandeau rappellent l'état des hôtels", (() => {
     const src = viewResults.toString();
     const dep = src.indexOf("const bandeau");
-    return dep > 0 && ["\"reel\"", "\"non-configure\"", "\"erreur\"", "\"devise\""].every(cle => {
+    return dep > 0 && ["\"reel\"", "\"filtres\"", "\"non-configure\"", "\"erreur\"", "\"devise\""].every(cle => {
       const i = src.indexOf(cle + ":", dep);
       return i > 0 && src.slice(i, i + 900).includes("etatHotels");
     });

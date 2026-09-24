@@ -128,8 +128,15 @@ export function minutesLocales(iso) {
  * juste incomparable. Une offre dont l'amont ne déclare rien n'est jamais écartée — on ne
  * punit pas un tarif pour un silence de la source.
  */
-export function meilleureOffre(payload, destination, { souteMin = 0, departApres = null, retourAvant = null } = {}) {
+export function meilleureOffre(payload, destination, { souteMin = 0, departApres = null, retourAvant = null } = {}, rejets = {}) {
   const offres = payload && payload.data && Array.isArray(payload.data.offers) ? payload.data.offers : [];
+  // Combien d'offres vues, combien écartées et par quelle règle. Sans ces compteurs, rendre
+  // `null` était indistinguable d'un amont muet : mesuré en production le 2026-09-24,
+  // retour_avant=1 rendait { trouvees:0, sansOffre:[] } — la destination disparaissait de
+  // la réponse sans motif et la page lui inventait un tarif modélisé. Les compteurs sont
+  // exacts dans ce cas précis : `best` reste null, donc le raccourci « déjà plus cher que
+  // le meilleur » ci-dessous ne saute jamais un filtre tant que rien n'a été retenu.
+  Object.assign(rejets, { vues: offres.length, soute: 0, departApres: 0, retourAvant: 0 });
   let best = null;
 
   for (const o of offres) {
@@ -139,7 +146,7 @@ export function meilleureOffre(payload, destination, { souteMin = 0, departApres
     if (best && total >= best.total) continue;
 
     const bagages = bagagesInclus(o);
-    if (souteMin > 0 && bagages.soute !== null && bagages.soute < souteMin) continue;
+    if (souteMin > 0 && bagages.soute !== null && bagages.soute < souteMin) { rejets.soute++; continue; }
 
     const slices = Array.isArray(o.slices) ? o.slices : [];
     const aller = slices[0] && Array.isArray(slices[0].segments) ? slices[0].segments : [];
@@ -154,8 +161,8 @@ export function meilleureOffre(payload, destination, { souteMin = 0, departApres
     const mRetour = minutesLocales(dernierRetour && (dernierRetour.arriving_at || dernierRetour.departing_at));
     // Les bornes sont exprimées en heures pleines et comparées à la minute : « pas avant
     // 8 h » accepte 8 h 00, « posé avant 20 h » refuse 20 h 01.
-    if (departApres !== null && mDepart !== null && mDepart < departApres * 60) continue;
-    if (retourAvant !== null && mRetour !== null && mRetour > retourAvant * 60) continue;
+    if (departApres !== null && mDepart !== null && mDepart < departApres * 60) { rejets.departApres++; continue; }
+    if (retourAvant !== null && mRetour !== null && mRetour > retourAvant * 60) { rejets.retourAvant++; continue; }
     const s0 = aller[0] || null;
     const porteur = (o.owner && typeof o.owner.name === "string" && o.owner.name)
       || (s0 && s0.operating_carrier && s0.operating_carrier.name)
@@ -240,7 +247,13 @@ export default async (req) => {
     const cle = `${signature}|${souteMin}|${departApres}|${retourAvant}|${dest}`;
     const hit = cache.lire(cle);
     // Une offre encore en cache mais périmée est rejetée : on redemande à l'amont.
-    if (hit !== undefined && !perimee(hit)) return hit;
+    if (hit !== undefined && !perimee(hit)) {
+      // Le cache garde aussi les motifs, et il faut les republier à chaque hit : ce retour
+      // sort AVANT les deux seuls push d'échec plus bas, donc sans ce rappel la 1re requête
+      // disait pourquoi et les 59 minutes suivantes rendaient sansOffre:[] (CACHE_MS = 1 h).
+      if (hit && hit.motif) { echecs.push(hit); return null; }
+      return hit;
+    }
 
     const slices = [{ origin, destination: dest, departure_date: depart }];
     if (retour) slices.push({ origin: dest, destination: origin, departure_date: retour });
@@ -265,8 +278,16 @@ export default async (req) => {
       // Le corps amont ne sort qu'expurgé et borné par motifEchec (duffel.mjs) — jamais tel quel.
       if (!res.ok) { echecs.push({ destination: dest, ...(await motifEchec(res)) }); return null; }
 
-      const offre = meilleureOffre(await res.json(), dest, { souteMin, departApres, retourAvant });
-      cache.ecrire(cle, offre);
+      const rejets = {};
+      const offre = meilleureOffre(await res.json(), dest, { souteMin, departApres, retourAvant }, rejets);
+      // Pas d'offre retenue = la destination va disparaître de `flights` : elle doit dire
+      // pourquoi, sinon la page lui invente un tarif modélisé sans un mot (195 € pour FAO,
+      // mesuré le 2026-09-24). `motif` sépare les deux silences — l'amont n'a rien proposé,
+      // ou rien de ce qu'il a proposé n'a été retenu, et les compteurs disent par quelle
+      // règle — et il distingue en cache un motif d'une offre.
+      const echec = offre ? null : { destination: dest, motif: rejets.vues ? "toutes-ecartees" : "aucune-offre", ...rejets };
+      cache.ecrire(cle, offre || echec);
+      if (echec) echecs.push(echec);
       return offre;
     } catch (e) {
       echecs.push({ destination: dest, status: e.name });
