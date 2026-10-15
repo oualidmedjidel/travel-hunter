@@ -1914,13 +1914,16 @@ async function hunt() {
 
   const [vols, hotels] = await Promise.all([
     fetchLiveFlights(f).then(r => {
-      state.sourcesN.vols = (r.live || []).length;
+      // `live` et `stays` sont des Map : `.length` y valait undefined, et la pastille
+      // affichait « aucune offre » au-dessus de 10 vols réels (mesuré en production le
+      // 2026-10-16). Une Map se compte avec `.size`.
+      state.sourcesN.vols = r.live ? r.live.size : 0;
       state.sources.vols = etatDepuisReponse(r.statut, state.sourcesN.vols);
       if (state.loading) render();
       return r;
     }),
     fetchLiveStays(f, dates.depart, dates.retour).then(r => {
-      state.sourcesN.hotels = (r.stays || []).length;
+      state.sourcesN.hotels = r.stays ? r.stays.size : 0;
       state.staysFournisseur = r.meta && r.meta.fournisseur ? r.meta.fournisseur : null;
       state.sources.hotels = etatDepuisReponse(r.statut, state.sourcesN.hotels);
       if (state.loading) render();
@@ -2220,6 +2223,11 @@ function corpsDesTests(ok, out) {
   })());
   ok("motif : hunt() alimente state.sansOffreVol depuis la réponse du proxy",
      /state\.sansOffreVol = vols\.meta/.test(hunt.toString()));
+  // Feuille de route 2.1, mesuré en production le 2026-10-16 : 10 vols réels sous une
+  // pastille « aucune offre ». `live` et `stays` sont des Map, `.length` y vaut undefined.
+  ok("pastilles : chaque source se compte avec la taille de sa Map",
+     /state\.sourcesN\.vols = r\.live \? r\.live\.size : 0/.test(hunt.toString())
+     && /state\.sourcesN\.hotels = r\.stays \? r\.stays\.size : 0/.test(hunt.toString()));
   ok("bagages : une seule information déclarée suffit",
      texteBagages({ soute: 2, cabine: null }) === "2 en soute");
   // Le tarif de démonstration n'a pas de bagages : la carte ne doit pas en inventer.
