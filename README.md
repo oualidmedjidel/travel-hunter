@@ -28,13 +28,13 @@ aucun badge « réel » ne surmonte jamais une donnée fictive.
 ## État mesuré le 2026-10-16
 
 ```
-https://travel-hunter.fr/                200 · 138 026 o · md5 09629cd7caa08f2bcf113f40dfef4b78
+https://travel-hunter.fr/                200 · 138 486 o · md5 dc630c02eae78c6151019e529cbf9ac5
                                          = public/index.html local, à l'octet
 /api/flights 10 destinations depuis PAR  200 · 11,5 s · 10/10 trouvées · devises ["EUR"]
 /api/stays   2 lieux                     200 · 6,5 s · fournisseur "liteapi" · mode "test"
                                          vrais établissements, prix de bac à sable
-?selftest=1 dans un navigateur           125 PASS · 0 FAIL, en production
-npm test                                 372/372 OK · 40/40 OK · 115/115 OK
+?selftest=1 dans un navigateur           126 PASS · 0 FAIL, en production
+npm test                                 372/372 OK · 40/40 OK · 127/127 OK
 ```
 
 - **Vols : réels**, avec un jeton de bac à sable (`mode:"test"`) — d'où le badge `vol test`,
@@ -133,10 +133,10 @@ Le dossier `netlify/` garde son nom d'origine : le renommer toucherait les impor
 rien apporter. Netlify n'héberge plus l'application — `tdhunt.netlify.app` redirige en 301
 vers `travel-hunter.fr`.
 
-L'auto-test de l'interface s'ouvre avec `?selftest=1` : 125 assertions (tarification,
+L'auto-test de l'interface s'ouvre avec `?selftest=1` : 126 assertions (tarification,
 filtres, validation, échappement HTML, fusion des tarifs réels, comptage des chambres,
 horizon de vente, badges, focus clavier, bagages, tranche horaire, veille et alertes,
-compte des sources)
+compte des sources, essai d'alerte de prix)
 affichées en surimpression. Plusieurs d'entre elles vérifient qu'un champ **existe bien dans
 le mode où la page s'ouvre** : deux menus rendus invisibles par un ternaire mal placé sont
 passés en production le 2026-09-23 sans qu'aucun test de logique s'en aperçoive.
