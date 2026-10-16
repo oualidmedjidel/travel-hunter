@@ -25,15 +25,15 @@ URL. Jamais versionné.
 Sans clé, l'application répond `200 {configured:false}` et bascule en démonstration :
 aucun badge « réel » ne surmonte jamais une donnée fictive.
 
-## État mesuré le 2026-09-24
+## État mesuré le 2026-10-16
 
 ```
-https://travel-hunter.fr/                200 · 130 600 o · md5 f94514578a16edf1ec50a2bc380db147
+https://travel-hunter.fr/                200 · 138 026 o · md5 09629cd7caa08f2bcf113f40dfef4b78
                                          = public/index.html local, à l'octet
-/api/flights 10 destinations depuis PAR  200 · 14,1 s · 10/10 trouvées · devises ["EUR"]
-/api/stays   2 lieux                     200 · 3,8 s · fournisseur "liteapi" · mode "test"
+/api/flights 10 destinations depuis PAR  200 · 11,5 s · 10/10 trouvées · devises ["EUR"]
+/api/stays   2 lieux                     200 · 6,5 s · fournisseur "liteapi" · mode "test"
                                          vrais établissements, prix de bac à sable
-?selftest=1 dans un navigateur           124 PASS · 0 FAIL (mesuré en local)
+?selftest=1 dans un navigateur           125 PASS · 0 FAIL, en production
 npm test                                 372/372 OK · 40/40 OK · 115/115 OK
 ```
 
@@ -133,9 +133,10 @@ Le dossier `netlify/` garde son nom d'origine : le renommer toucherait les impor
 rien apporter. Netlify n'héberge plus l'application — `tdhunt.netlify.app` redirige en 301
 vers `travel-hunter.fr`.
 
-L'auto-test de l'interface s'ouvre avec `?selftest=1` : 124 assertions (tarification,
+L'auto-test de l'interface s'ouvre avec `?selftest=1` : 125 assertions (tarification,
 filtres, validation, échappement HTML, fusion des tarifs réels, comptage des chambres,
-horizon de vente, badges, focus clavier, bagages, tranche horaire, veille et alertes)
+horizon de vente, badges, focus clavier, bagages, tranche horaire, veille et alertes,
+compte des sources)
 affichées en surimpression. Plusieurs d'entre elles vérifient qu'un champ **existe bien dans
 le mode où la page s'ouvre** : deux menus rendus invisibles par un ternaire mal placé sont
 passés en production le 2026-09-23 sans qu'aucun test de logique s'en aperçoive.
