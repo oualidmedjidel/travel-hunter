@@ -75,8 +75,10 @@ export default async (req) => {
     }
 
     if (corps.action === "tester") {
-      const r = await envoyerEssai(proprietaire);
-      if (r.erreur) return json({ error: r.erreur }, 429);
+      // "prix" essaie le texte d'une vraie alerte, avec les chiffres réels du dernier
+      // relevé ; toute autre valeur retombe sur l'essai simple.
+      const r = await envoyerEssai(proprietaire, { forme: corps.forme === "prix" ? "prix" : null });
+      if (r.erreur) return json({ error: r.erreur }, r.sansReleve ? 409 : 429);
       return json(r);
     }
 

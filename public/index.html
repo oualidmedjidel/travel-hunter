@@ -1769,14 +1769,14 @@ async function activerAlertes() {
  * Le serveur emprunte exactement le chemin d'une vraie alerte — si l'essai arrive, une
  * alerte arrivera.
  */
-async function testerAlerte() {
+async function testerAlerte(forme) {
   const id = proprietaire();
   if (!id) return;
   state.veilleMsg = "Envoi d'un essai…"; render();
   try {
     const r = await fetch("/api/veille", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "tester", proprietaire: id })
+      body: JSON.stringify({ action: "tester", proprietaire: id, ...(forme ? { forme } : {}) })
     });
     const d = await r.json();
     state.veilleMsg = r.ok
@@ -1852,6 +1852,7 @@ function viewVeilles() {
     actives: `<div class="alert alert--info"><span>🔔</span><div><b>Alertes actives sur cet appareil.</b>
       Tu seras prévenu quand un vol passe sous son meilleur prix connu.
       <button type="button" class="chip" onclick="testerAlerte()">Tester l'alerte</button>
+      <button type="button" class="chip" onclick="testerAlerte('prix')">Tester une alerte de prix</button>
       <button type="button" class="chip" onclick="couperAlertes()">Couper</button></div></div>`,
     inactives: `<div class="alert alert--info"><span>🔕</span><div>Les alertes sont éteintes sur cet appareil.
       <button type="button" class="chip" onclick="activerAlertes()">Activer les alertes</button></div></div>`,
@@ -2225,6 +2226,10 @@ function corpsDesTests(ok, out) {
      /state\.sansOffreVol = vols\.meta/.test(hunt.toString()));
   // Feuille de route 2.1, mesuré en production le 2026-10-16 : 10 vols réels sous une
   // pastille « aucune offre ». `live` et `stays` sont des Map, `.length` y vaut undefined.
+  // Feuille de route 2.6 : Chrome masque les notifications qui ressemblent à du spam. Le
+  // texte d'une vraie alerte de prix doit pouvoir s'essayer sans attendre un vrai record.
+  ok("veille : un essai au format d'une vraie alerte de prix est proposé",
+     /testerAlerte\('prix'\)/.test(viewVeilles.toString()));
   ok("pastilles : chaque source se compte avec la taille de sa Map",
      /state\.sourcesN\.vols = r\.live \? r\.live\.size : 0/.test(hunt.toString())
      && /state\.sourcesN\.hotels = r\.stays \? r\.stays\.size : 0/.test(hunt.toString()));

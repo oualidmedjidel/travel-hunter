@@ -77,9 +77,9 @@ export async function alerter(veille, records, { envoi = reveiller, clefs = vapi
  * abonnements périmés. Un bouton d'essai qui emprunterait un autre chemin ne prouverait
  * rien sur le vrai.
  */
-export async function envoyerEssai(proprietaire, { envoi = reveiller, clefs = vapid, maintenant } = {}) {
-  const note = await noterEssai(proprietaire, maintenant ? { maintenant } : {});
-  if (note.erreur) return { erreur: note.erreur };
+export async function envoyerEssai(proprietaire, { envoi = reveiller, clefs = vapid, maintenant, forme } = {}) {
+  const note = await noterEssai(proprietaire, { ...(maintenant ? { maintenant } : {}), forme });
+  if (note.erreur) return { erreur: note.erreur, sansReleve: !!note.sansReleve };
 
   const abonnements = await abonnementsDe(proprietaire);
   if (!abonnements.length) return { envoyees: 0, tentees: 0, sansAbonnement: true };

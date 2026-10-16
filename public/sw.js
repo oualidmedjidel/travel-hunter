@@ -7,7 +7,7 @@
  *
  * Ici : network-first pour les navigations (HTML), cache-first pour le reste.
  */
-const CACHE = "tdh-v6";   // v4 → v5 : le service worker gagne le push, les anciens caches partent
+const CACHE = "tdh-v7";   // v6 → v7 : textes des notifications réécrits (Chrome en masquait un comme spam)
 
 /**
  * Ce qui mérite d'entrer en cache. La version précédente mettait en cache la réponse de
@@ -35,6 +35,31 @@ self.addEventListener("activate", e => {
 });
 
 /**
+ * Le texte d'une notification, à partir de l'alerte rendue par le serveur.
+ *
+ * Chrome sur Android fait lire le texte de chaque notification (titre, corps, boutons) par
+ * un modèle local, et masque ce qui ressemble à du spam derrière « Spam potentiel ».
+ * Constaté le 2026-10-16 sur un essai. L'ancienne alerte avait la forme d'une promotion —
+ * « RAK : 315 € — nouveau meilleur prix », « 12 % sous le meilleur prix déjà vu » — et
+ * « prix » se lit aussi « lot à gagner ». D'où : le titre nomme la veille de l'utilisateur,
+ * le corps donne deux chiffres et rien d'autre, sans pourcentage ni superlatif.
+ */
+function texteNotification(a) {
+  if (a && a.code) {
+    return {
+      titre: a.nom ? `Ta veille ${a.nom}` : "Ta veille",
+      corps: `Vol vers ${a.code} : ${Math.round(a.nouveau)} € au dernier relevé, `
+           + `contre ${Math.round(a.ancien)} € au plus bas jusqu'ici.` + (a.essai ? " (essai)" : "")
+    };
+  }
+  if (a && a.essai) {
+    return { titre: "Ta veille fonctionne",
+             corps: "Ce téléphone sera prévenu dès qu'une de tes recherches surveillées trouve un tarif plus bas." };
+  }
+  return { titre: "Ta veille", corps: "Du nouveau sur une de tes veilles : le détail est dans « Mes veilles »." };
+}
+
+/**
  * Une notification poussée arrive SANS contenu : le serveur ne fait que réveiller
  * l'appareil (netlify/lib/push.mjs explique pourquoi). C'est donc ici qu'on demande au
  * site quoi afficher, en s'identifiant par notre propre point d'entrée — un service
@@ -45,7 +70,7 @@ self.addEventListener("activate", e => {
  */
 self.addEventListener("push", e => {
   e.waitUntil((async () => {
-    let titre = "Travel Deal Hunter", corps = "Un prix a bougé sur une de tes veilles.";
+    let alerte = null;
     try {
       const abonnement = await self.registration.pushManager.getSubscription();
       if (abonnement) {
@@ -54,17 +79,10 @@ self.addEventListener("push", e => {
           body: JSON.stringify({ endpoint: abonnement.endpoint })
         });
         const d = await r.json();
-        if (d && d.alerte && d.alerte.essai) {
-          titre = "Essai réussi";
-          corps = "Les alertes fonctionnent sur cet appareil. Tu seras prévenu au prochain record de prix.";
-        } else if (d && d.alerte) {
-          const a = d.alerte;
-          titre = `${a.code} : ${Math.round(a.nouveau)} € — nouveau meilleur prix`;
-          corps = `${a.baisse} % sous le meilleur prix déjà vu (${Math.round(a.ancien)} €)`
-                + (a.nom ? ` · ${a.nom}` : "");
-        }
+        alerte = d && d.alerte ? d.alerte : null;
       }
     } catch {}
+    const { titre, corps } = texteNotification(alerte);
     await self.registration.showNotification(titre, {
       body: corps,
       icon: "/icone-192.png",

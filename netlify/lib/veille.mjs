@@ -228,17 +228,42 @@ export const DELAI_ESSAI_MS = 60_000;   // un essai par minute : de quoi vérifi
  * Alerte d'essai, rattachée au propriétaire et non à une veille : on doit pouvoir
  * vérifier que les notifications marchent **avant** d'avoir mis quoi que ce soit sous
  * surveillance. Rend `{ erreur }` si l'essai précédent date de moins d'une minute.
+ *
+ * `forme: "prix"` essaie le texte d'une vraie alerte de prix — celui que Chrome risque le
+ * plus de masquer comme spam — sans attendre un vrai record : il reprend les chiffres
+ * RÉELS du dernier relevé de la veille. Sans relevé, l'essai est refusé (`sansReleve`),
+ * jamais complété par un prix inventé.
  */
-export async function noterEssai(proprietaire, { maintenant = Date.now() } = {}, chemin = cheminFichier()) {
+export async function noterEssai(proprietaire, { maintenant = Date.now(), forme = null } = {}, chemin = cheminFichier()) {
   const d = await lire(chemin);
   d.essais = d.essais && typeof d.essais === "object" ? d.essais : {};
   const precedent = d.essais[proprietaire];
   if (precedent && maintenant - Date.parse(precedent.t) < DELAI_ESSAI_MS) {
     return { erreur: "un essai vient d'être envoyé ; laisse-lui une minute" };
   }
-  d.essais[proprietaire] = { t: new Date(maintenant).toISOString(), essai: true, nom: "Essai d'alerte" };
+  let essai = { t: new Date(maintenant).toISOString(), essai: true, nom: "Essai d'alerte" };
+  if (forme === "prix") {
+    const chiffres = dernierPrixReel(d.veilles.filter(v => v.proprietaire === proprietaire));
+    if (!chiffres) return { erreur: "aucun relevé à montrer : il faut une veille et son premier relevé", sansReleve: true };
+    essai = { ...essai, ...chiffres };
+  }
+  d.essais[proprietaire] = essai;
   await ecrire(d, chemin);
-  return d.essais[proprietaire];
+  return essai;
+}
+
+/** La destination la moins chère du dernier relevé, et le plus bas vu avant pour elle. */
+function dernierPrixReel(veilles) {
+  for (const v of veilles) {
+    const releves = Array.isArray(v.releves) ? v.releves : [];
+    const dernier = releves[releves.length - 1];
+    const vols = Object.entries((dernier && dernier.vols) || {}).filter(([, p]) => typeof p === "number");
+    if (!vols.length) continue;
+    const [code, nouveau] = vols.sort((a, b) => a[1] - b[1])[0];
+    const avant = releves.slice(0, -1).map(r => r.vols && r.vols[code]).filter(p => typeof p === "number");
+    return { nom: v.nom, code, nouveau, ancien: avant.length ? Math.min(...avant) : nouveau };
+  }
+  return null;
 }
 
 /** Garde la trace de la dernière alerte envoyée : c'est ce que le service worker affichera. */
